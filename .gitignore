@@ -1,0 +1,22 @@
+# Trained model checkpoint
+model.pt
+
+# Training input
+input.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
