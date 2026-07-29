@@ -1,0 +1,2385 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GlassGPT — Anatomia di un GPT trasparente</title>
+<meta name="description" content="Ogni meccanismo di un GPT — BPE tokenizer, attention, MLP, training, sampling — spiegato in dettaglio con demo interattive a numeri veri. Basato sul repo AlessandroCapelli/GlassGPT.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:ital,wght@0,400..800;1,400&display=swap" rel="stylesheet">
+<style>
+
+:root{
+  --bg0:#070b10; --bg1:#0c1219; --bg2:#101825;
+  --glass:rgba(151,199,226,.055); --glass2:rgba(151,199,226,.09);
+  --edge:rgba(160,214,242,.16); --edge2:rgba(160,214,242,.3);
+  --aqua:#7fd8e8; --violet:#b3a0ff; --amber:#ffb454; --rose:#ff7e9d; --green:#8fe8b0;
+  --txt:#dce8f0; --dim:#93a7b6; --faint:#5c7180;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --body:'Atkinson Hyperlegible',system-ui,Segoe UI,sans-serif;
+  --disp:'Bricolage Grotesque','Atkinson Hyperlegible',system-ui,sans-serif;
+  --rail:64px; --maxw:940px;
+}
+*{box-sizing:border-box} html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}
+}
+body{
+  margin:0; background:var(--bg0); color:var(--txt);
+  font-family:var(--body); font-size:16.5px; line-height:1.62;
+  -webkit-font-smoothing:antialiased; overflow-x:hidden;
+}
+body::before{
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:
+    radial-gradient(900px 520px at 82% -6%, rgba(127,216,232,.075), transparent 60%),
+    radial-gradient(760px 500px at -10% 22%, rgba(179,160,255,.06), transparent 60%),
+    radial-gradient(900px 700px at 60% 108%, rgba(255,180,84,.05), transparent 60%),
+    var(--bg0);
+}
+::selection{background:rgba(127,216,232,.28)}
+a{color:var(--aqua); text-decoration:none}
+a:hover{text-decoration:underline}
+code,pre,kbd,.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--aqua); outline-offset:2px; border-radius:4px}
+
+#rail{position:fixed; top:0; bottom:0; left:0; width:var(--rail); z-index:40}
+#rail .line{position:absolute; left:31px; top:0; bottom:0; width:2px;
+  background:rgba(160,214,242,.10)}
+#rail .fill{position:absolute; left:31px; top:0; width:2px; height:0;
+  background:linear-gradient(180deg,var(--aqua),var(--amber));
+  box-shadow:0 0 12px rgba(127,216,232,.5)}
+#rail nav{position:absolute; top:50%; transform:translateY(-50%); left:0; width:100%;
+  display:flex; flex-direction:column; gap:14px; align-items:center}
+#rail a{display:block; width:11px; height:11px; border-radius:50%;
+  background:var(--bg1); border:1.5px solid rgba(160,214,242,.35); position:relative}
+#rail a:hover,#rail a.on{border-color:var(--amber); background:rgba(255,180,84,.25);
+  box-shadow:0 0 10px rgba(255,180,84,.45)}
+#rail a .tip{position:absolute; left:22px; top:50%; transform:translateY(-50%);
+  white-space:nowrap; font:600 11px/1 var(--mono); letter-spacing:.06em;
+  color:var(--amber); background:rgba(10,16,24,.92); border:1px solid var(--edge);
+  padding:5px 9px; border-radius:6px; opacity:0; pointer-events:none; transition:opacity .15s}
+#rail a:hover .tip,#rail a:focus-visible .tip{opacity:1}
+
+#mprog{display:none; position:fixed; top:0; left:0; right:0; height:3px; z-index:60;
+  background:rgba(160,214,242,.08)}
+#mprog i{display:block; height:100%; width:0; background:linear-gradient(90deg,var(--aqua),var(--amber))}
+
+main{max-width:var(--maxw); margin:0 auto; padding:0 26px 90px; padding-left:calc(var(--rail) + 26px)}
+section.st{padding-top:84px; scroll-margin-top:8px}
+.eyebrow{font:700 12px/1 var(--mono); letter-spacing:.22em; text-transform:uppercase;
+  color:var(--amber); display:flex; gap:12px; align-items:center}
+.eyebrow::after{content:""; height:1px; flex:1; background:linear-gradient(90deg,rgba(255,180,84,.4),transparent)}
+.eyebrow .shape{color:var(--faint); letter-spacing:.08em}
+h2{font-family:var(--disp); font-weight:640; font-size:clamp(26px,3.6vw,38px);
+  line-height:1.12; margin:.45em 0 .4em; letter-spacing:-.01em}
+h3{font-family:var(--disp); font-weight:600; font-size:20px; margin:1.8em 0 .5em; color:var(--txt)}
+p{margin:.8em 0; color:var(--txt)}
+p.lead{font-size:18.5px; color:#e9f2f8}
+.dim{color:var(--dim)} .faint{color:var(--faint)} small{color:var(--dim)}
+em{color:#f0f6fa}
+strong{color:#fff; font-weight:700}
+mark{background:rgba(255,180,84,.18); color:var(--amber); padding:0 4px; border-radius:4px}
+
+.q{color:var(--aqua)} .k{color:var(--violet)} .v{color:var(--amber)} .neg{color:var(--rose)}
+.shp{font:600 12.5px/1.7 var(--mono); color:var(--aqua); background:rgba(127,216,232,.08);
+  border:1px solid rgba(127,216,232,.22); border-radius:6px; padding:1px 7px; white-space:nowrap}
+.tt{font-family:var(--mono); font-size:.92em; color:#cfe6ef; background:rgba(151,199,226,.09);
+  border:1px solid var(--edge); border-radius:5px; padding:0 5px}
+
+.card{background:var(--glass); border:1px solid var(--edge); border-radius:16px;
+  padding:22px 24px; margin:22px 0; position:relative;
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 14px 40px rgba(0,0,0,.35)}
+.card>h4{margin:0 0 6px; font:700 12px/1 var(--mono); letter-spacing:.18em;
+  text-transform:uppercase; color:var(--aqua)}
+.card>h4 .lbl{color:var(--faint); letter-spacing:.05em; float:right; font-weight:500}
+.demo{border-color:rgba(255,180,84,.28)}
+.demo>h4{color:var(--amber)}
+.demo>h4::before{content:"◈ "; }
+.note{border-left:3px solid var(--violet); background:rgba(179,160,255,.06);
+  border-radius:10px; padding:12px 16px; margin:16px 0; color:var(--dim); font-size:15px}
+.note b{color:var(--violet)}
+.formula{font-family:var(--mono); font-size:15.5px; text-align:center; margin:18px auto;
+  padding:14px 18px; background:rgba(16,24,37,.7); border:1px solid var(--edge);
+  border-radius:12px; color:#eaf4fa; overflow-x:auto; max-width:640px}
+.formula .op{color:var(--faint)}
+
+.diag{font-family:var(--mono); font-size:13px; line-height:1.55; color:var(--dim);
+  background:rgba(10,15,22,.75); border:1px solid var(--edge); border-radius:12px;
+  padding:16px 18px; overflow-x:auto; white-space:pre; margin:18px 0}
+.diag b{color:var(--amber); font-weight:600} .diag i{color:var(--aqua); font-style:normal}
+.diag u{color:var(--violet); text-decoration:none} .diag s{color:var(--rose); text-decoration:none}
+
+details.src{margin:18px 0; border:1px solid var(--edge); border-radius:12px;
+  background:rgba(9,14,21,.8); overflow:hidden}
+details.src summary{cursor:pointer; padding:11px 16px; font:600 13px var(--mono);
+  color:var(--dim); list-style:none; display:flex; gap:10px; align-items:center; user-select:none}
+details.src summary::-webkit-details-marker{display:none}
+details.src summary::before{content:"▸"; color:var(--amber); transition:transform .2s}
+details.src[open] summary::before{transform:rotate(90deg)}
+details.src summary .file{color:var(--aqua)}
+details.src summary .lines{margin-left:auto; color:var(--faint); font-weight:400}
+details.src pre{margin:0; padding:14px 18px 18px; overflow-x:auto; font-size:12.8px;
+  line-height:1.6; border-top:1px solid var(--edge); tab-size:4}
+.hl-k{color:#c792ea}.hl-s{color:#c3e88d}.hl-c{color:#546e7a;font-style:italic}
+.hl-n{color:#f78c6c}.hl-f{color:#82aaff}.hl-d{color:#ffcb6b}.hl-self{color:#ff5370}
+
+.ctr{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0}
+button.b{font:600 13px var(--mono); letter-spacing:.04em; color:var(--txt);
+  background:var(--glass2); border:1px solid var(--edge2); border-radius:9px;
+  padding:8px 15px; cursor:pointer; transition:all .15s}
+button.b:hover{background:rgba(127,216,232,.16); border-color:var(--aqua); color:#fff}
+button.b.warm{border-color:rgba(255,180,84,.45); color:var(--amber)}
+button.b.warm:hover{background:rgba(255,180,84,.14)}
+button.b:disabled{opacity:.35; cursor:default}
+button.b:disabled:hover{background:var(--glass2); border-color:var(--edge2); color:var(--txt)}
+.tog{display:inline-flex; align-items:center; gap:8px; font:500 13.5px var(--mono);
+  color:var(--dim); cursor:pointer; user-select:none}
+.tog input{appearance:none; width:34px; height:19px; border-radius:12px; margin:0;
+  background:rgba(160,214,242,.14); border:1px solid var(--edge2); position:relative;
+  cursor:pointer; transition:background .2s; flex:none}
+.tog input::after{content:""; position:absolute; top:2px; left:2px; width:13px; height:13px;
+  border-radius:50%; background:var(--dim); transition:all .2s}
+.tog input:checked{background:rgba(255,180,84,.3)}
+.tog input:checked::after{left:17px; background:var(--amber)}
+.sld{display:flex; align-items:center; gap:10px; font:500 13px var(--mono); color:var(--dim)}
+.sld output{color:var(--amber); min-width:46px; text-align:right; font-weight:700}
+input[type=range]{appearance:none;-webkit-appearance:none; width:150px; height:4px; border-radius:3px;
+  background:rgba(160,214,242,.18); outline-offset:4px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:15px; height:15px; border-radius:50%;
+  background:var(--amber); border:2px solid #1a1206; cursor:pointer; box-shadow:0 0 8px rgba(255,180,84,.5)}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--amber);border:2px solid #1a1206;cursor:pointer}
+input[type=text],textarea,select{font:500 14px var(--mono); color:var(--txt);
+  background:rgba(9,14,21,.85); border:1px solid var(--edge2); border-radius:9px; padding:8px 12px}
+input[type=text]:focus,textarea:focus{border-color:var(--aqua); outline:none}
+textarea{width:100%; resize:vertical; line-height:1.5}
+select{cursor:pointer}
+input[type=number]{font:600 14px var(--mono); color:var(--amber); width:76px;
+  background:rgba(9,14,21,.85); border:1px solid var(--edge2); border-radius:8px; padding:7px 9px}
+
+.tokline{display:flex; flex-wrap:wrap; gap:4px; margin:10px 0; align-items:center}
+.tk{font:600 12.5px/1 var(--mono); padding:6px 7px; border-radius:7px; cursor:default;
+  border:1px solid; white-space:pre; position:relative; transition:transform .12s}
+.tk:hover{transform:translateY(-2px)}
+.tk sub{font-size:9px; opacity:.75; margin-left:3px}
+.tk.sel{outline:2px solid var(--amber); outline-offset:1px}
+
+.mat{display:inline-grid; gap:3px; margin:6px 0}
+.mat .c{width:44px; height:30px; display:flex; align-items:center; justify-content:center;
+  font:600 10.8px var(--mono); border-radius:5px; border:1px solid rgba(160,214,242,.08);
+  transition:box-shadow .15s, outline .15s}
+.mat .c.hd{background:none; border:none; color:var(--faint); font-size:10px}
+.mat .c.inf{color:var(--rose); background:rgba(255,126,157,.08); border-color:rgba(255,126,157,.25)}
+.mat .c.hot{outline:2px solid var(--amber); outline-offset:0; z-index:2}
+.mat .c.row-on{box-shadow:inset 0 0 0 1px rgba(127,216,232,.5)}
+.matwrap{overflow-x:auto; padding:6px 2px}
+.mlab{font:700 11px var(--mono); letter-spacing:.12em; color:var(--dim); margin:12px 0 4px;
+  text-transform:uppercase}
+.mlab b{color:var(--amber); font-weight:700}
+.matrow{display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start}
+.arrow{align-self:center; color:var(--faint); font:600 18px var(--mono)}
+
+.bars{display:flex; align-items:flex-end; gap:5px; height:150px; padding:6px 2px 0}
+.bars .bar{flex:1; min-width:14px; display:flex; flex-direction:column; justify-content:flex-end;
+  align-items:center; gap:4px; position:relative}
+.bars .bar i{display:block; width:100%; border-radius:4px 4px 0 0;
+  background:linear-gradient(180deg,var(--aqua),rgba(127,216,232,.25)); transition:height .18s}
+.bars .bar.cut i{background:linear-gradient(180deg,rgba(140,160,175,.5),rgba(140,160,175,.12))}
+.bars .bar.win i{background:linear-gradient(180deg,var(--amber),rgba(255,180,84,.3));
+  box-shadow:0 0 12px rgba(255,180,84,.4)}
+.bars .bar b{font:600 9.5px var(--mono); color:var(--dim); white-space:nowrap}
+.bars .bar .pv{position:absolute; top:-16px; font:600 9.5px var(--mono); color:var(--aqua)}
+.bars .bar.win .pv{color:var(--amber)}
+
+.steps{display:flex; gap:6px; flex-wrap:wrap; margin:12px 0}
+.steps button{font:600 11.5px var(--mono); padding:6px 10px; border-radius:7px; cursor:pointer;
+  background:none; border:1px solid var(--edge); color:var(--dim)}
+.steps button.on{border-color:var(--amber); color:var(--amber); background:rgba(255,180,84,.1)}
+.stepbox{min-height:56px; border-left:3px solid var(--amber); background:rgba(255,180,84,.05);
+  border-radius:8px; padding:10px 14px; font-size:14.5px; color:var(--txt); margin:10px 0}
+
+#rsSvg g.node{opacity:.34; transition:opacity .35s ease, filter .35s ease}
+#rsSvg g.node.lit{opacity:1; filter:drop-shadow(0 0 6px rgba(127,216,232,.55))}
+#rsSvg g.node.done{opacity:.62}
+
+#hero{min-height:88vh; display:flex; flex-direction:column; justify-content:center; padding-top:64px}
+#hero .kicker{font:700 13px var(--mono); letter-spacing:.3em; color:var(--aqua); text-transform:uppercase}
+#hero h1{font-family:var(--disp); font-weight:700; letter-spacing:-.02em;
+  font-size:clamp(46px,8.4vw,96px); line-height:.98; margin:.18em 0 .1em}
+#hero h1 .g{background:linear-gradient(105deg,#eaf6fb 20%,var(--aqua) 55%,var(--violet) 85%);
+  -webkit-background-clip:text; background-clip:text; color:transparent}
+#hero .sub{font-size:clamp(16px,2.1vw,20px); color:var(--dim); max-width:680px}
+.specs{display:flex; flex-wrap:wrap; gap:9px; margin:26px 0 8px}
+.spec{font:600 12.5px var(--mono); color:var(--dim); border:1px solid var(--edge);
+  background:var(--glass); border-radius:20px; padding:7px 14px}
+.spec b{color:var(--amber); font-weight:700}
+#pipe{margin-top:34px}
+#pipe svg{width:100%; height:auto; display:block}
+#pipe .stage{cursor:pointer}
+#pipe .stage rect{fill:rgba(151,199,226,.06); stroke:rgba(160,214,242,.3); rx:10}
+#pipe .stage:hover rect,#pipe .stage.lit rect{stroke:var(--amber); fill:rgba(255,180,84,.09)}
+#pipe .stage text{fill:#d7e6ef; font:600 12px var(--mono)}
+#pipe .stage .sm{fill:var(--faint); font-size:9.5px; font-weight:500}
+#pipe path.wire{stroke:rgba(160,214,242,.3); stroke-width:1.6; fill:none}
+#pipe .pulse{fill:var(--amber); filter:drop-shadow(0 0 6px var(--amber))}
+.hint{font:500 12.5px var(--mono); color:var(--faint); margin-top:6px}
+
+table.t{width:100%; border-collapse:collapse; font-size:14px; margin:14px 0}
+table.t th{font:700 11.5px var(--mono); letter-spacing:.1em; text-transform:uppercase;
+  color:var(--dim); text-align:left; padding:8px 10px; border-bottom:1px solid var(--edge2)}
+table.t td{padding:8px 10px; border-bottom:1px solid var(--edge); vertical-align:top}
+table.t td.mono,table.t td:first-child{font-family:var(--mono); font-size:13px}
+table.t td:first-child{color:var(--aqua); white-space:nowrap; font-weight:600}
+table.t tr.tot td{border-top:2px solid var(--edge2); color:var(--amber); font-weight:700}
+.num{color:var(--amber); font-family:var(--mono); font-weight:700}
+
+.pairs{display:flex; flex-direction:column; gap:5px; max-height:220px; overflow:auto; padding-right:6px}
+.pair{display:flex; align-items:center; gap:10px; font:600 12.5px var(--mono)}
+.pair .pb{height:14px; border-radius:4px; background:linear-gradient(90deg,var(--aqua),rgba(127,216,232,.2)); min-width:3px}
+.pair.win .pb{background:linear-gradient(90deg,var(--amber),rgba(255,180,84,.25))}
+.pair .pl{color:var(--txt); min-width:110px} .pair.win .pl{color:var(--amber)}
+.pair .pc{color:var(--faint)}
+
+.console{font:500 12.5px/1.75 var(--mono); background:#05080d; border:1px solid var(--edge);
+  border-radius:10px; padding:12px 16px; max-height:230px; overflow:auto; color:#9fc0cf; white-space:pre-wrap}
+.console .ok{color:var(--green)} .console .wm{color:var(--amber)} .console .cy{color:var(--aqua)}
+
+.flow{display:flex; flex-direction:column; gap:0; align-items:center; font:600 13px var(--mono)}
+.fnode{border:1.5px solid var(--edge2); border-radius:10px; padding:10px 18px; color:var(--dim);
+  background:rgba(151,199,226,.05); transition:all .2s; text-align:center}
+.fnode.on{border-color:var(--amber); color:var(--amber); background:rgba(255,180,84,.1);
+  box-shadow:0 0 14px rgba(255,180,84,.25)}
+.fnode.q{border-style:dashed}
+.fedge{height:26px; width:2px; background:rgba(160,214,242,.2); position:relative}
+.fedge.on{background:var(--amber); box-shadow:0 0 8px rgba(255,180,84,.5)}
+.fedge span{position:absolute; left:10px; top:3px; font:600 10.5px var(--mono); color:var(--faint); white-space:nowrap}
+.fedge.on span{color:var(--amber)}
+.fsplit{display:flex; gap:44px; align-items:flex-start}
+.fcol{display:flex; flex-direction:column; align-items:center}
+
+#gl-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(268px,1fr)); gap:12px; margin-top:16px}
+.gl{background:var(--glass); border:1px solid var(--edge); border-radius:12px; padding:12px 15px}
+.gl b{font:700 13.5px var(--mono); color:var(--aqua)}
+.gl .cat{float:right; font:600 9.5px var(--mono); letter-spacing:.1em; color:var(--faint); text-transform:uppercase}
+.gl p{margin:5px 0 0; font-size:13.5px; color:var(--dim); line-height:1.5}
+.chips{display:flex; gap:7px; flex-wrap:wrap; margin:12px 0}
+.chip{font:600 11.5px var(--mono); padding:6px 12px; border-radius:16px; cursor:pointer;
+  border:1px solid var(--edge); color:var(--dim); background:none}
+.chip.on{border-color:var(--aqua); color:var(--aqua); background:rgba(127,216,232,.1)}
+
+canvas{max-width:100%; border-radius:10px}
+.legend{display:flex; gap:16px; flex-wrap:wrap; font:600 11.5px var(--mono); color:var(--dim); margin:8px 0}
+.legend i{display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:6px; vertical-align:-1px}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:22px; align-items:start}
+footer{margin-top:90px; padding:26px 0 10px; border-top:1px solid var(--edge); color:var(--faint);
+  font:500 13px var(--mono); display:flex; gap:18px; flex-wrap:wrap}
+.reveal{opacity:0; transform:translateY(18px); transition:opacity .6s ease, transform .6s ease}
+.reveal.in{opacity:1; transform:none}
+
+@media (max-width:1023px){
+  #rail{display:none} #mprog{display:block}
+  main{padding-left:26px}
+  .grid2{grid-template-columns:1fr}
+  #hero{min-height:72vh}
+  .mat .c{width:38px; height:27px; font-size:9.8px}
+  table.t{display:block; overflow-x:auto; white-space:nowrap}
+  table.t td,table.t th{white-space:normal; min-width:120px}
+  table.t td:first-child{white-space:nowrap}
+  .tt{overflow-wrap:anywhere}
+  .fsplit{gap:14px}
+  .fnode{padding:8px 10px; font-size:11.5px}
+}
+@media (prefers-reduced-motion:reduce){ .reveal{opacity:1; transform:none} }
+
+</style>
+</head>
+<body>
+<div id="mprog"><i></i></div>
+<div id="rail" aria-hidden="false">
+  <div class="line"></div><div class="fill" id="railfill"></div>
+  <nav id="railnav" aria-label="Stazioni della pipeline"></nav>
+</div>
+
+<main>
+<header id="hero">
+  <div class="kicker">glassgpt.py · 1 900 righe · un solo file · MIT license</div>
+  <h1><span class="g">GlassGPT</span></h1>
+  <p class="sub">L'anatomia completa di un <strong>GPT trasparente</strong>: dal byte al testo generato, ogni operazione del repo <a href="https://github.com/AlessandroCapelli/GlassGPT" target="_blank" rel="noopener">AlessandroCapelli/GlassGPT</a> è spiegata qui sotto con formule, shape dei tensori, codice sorgente reale e una <em>demo interattiva a numeri veri</em> per ogni meccanismo. Niente <span class="tt">nn.Transformer</span>: solo tensori e autograd, strato per strato.</p>
+  <div class="specs">
+    <span class="spec"><b>866 048</b> parametri</span>
+    <span class="spec">C = <b>128</b> n_embd</span>
+    <span class="spec">T = <b>64</b> block_size</span>
+    <span class="spec">V = <b>512</b> token BPE</span>
+    <span class="spec">H = <b>4</b> head × hs = <b>32</b></span>
+    <span class="spec">L = <b>4</b> block</span>
+    <span class="spec">AdamW · lr <b>3e-4</b></span>
+    <span class="spec">dropout <b>0.1</b></span>
+  </div>
+
+  <div id="pipe" class="card" style="padding:18px 16px 10px">
+    <h4>La pipeline completa <span class="lbl">clicca una tappa per raggiungere la stazione</span></h4>
+    <svg viewBox="0 0 900 214" role="img" aria-label="Pipeline: testo, BPE, idx, embeddings, block, layernorm e lm_head, logits, loss o sampling, testo generato">
+      <path class="wire" id="wirepath" d="M 68 45 H 866 V 167 H 96" />
+      <path class="wire" d="M 96 167 l 9 -5 M 96 167 l 9 5" />
+      <g class="stage" data-go="s02"><rect x="10" y="18" width="112" height="54"/><text x="66" y="41" text-anchor="middle">TESTO</text><text x="66" y="58" text-anchor="middle" class="sm">«Nel mezzo del…»</text></g>
+      <g class="stage" data-go="s02"><rect x="146" y="18" width="146" height="54"/><text x="219" y="41" text-anchor="middle">BPE encode</text><text x="219" y="58" text-anchor="middle" class="sm">byte → merge appresi</text></g>
+      <g class="stage" data-go="s03"><rect x="316" y="18" width="104" height="54"/><text x="368" y="41" text-anchor="middle">idx</text><text x="368" y="58" text-anchor="middle" class="sm">(B, T) interi</text></g>
+      <g class="stage" data-go="s04"><rect x="444" y="18" width="162" height="54"/><text x="525" y="41" text-anchor="middle">Embeddings</text><text x="525" y="58" text-anchor="middle" class="sm">token + position</text></g>
+      <g class="stage" data-go="s05"><rect x="630" y="18" width="196" height="54"/><text x="728" y="41" text-anchor="middle">4 × Block</text><text x="728" y="58" text-anchor="middle" class="sm">attention + MLP, residual</text></g>
+      <g class="stage" data-go="s09"><rect x="642" y="140" width="184" height="54"/><text x="734" y="163" text-anchor="middle">LayerNorm · lm_head</text><text x="734" y="180" text-anchor="middle" class="sm">C → V (weight tying)</text></g>
+      <g class="stage" data-go="s10"><rect x="502" y="140" width="116" height="54"/><text x="560" y="163" text-anchor="middle">logits</text><text x="560" y="180" text-anchor="middle" class="sm">(B, T, V)</text></g>
+      <g class="stage" data-go="s12"><rect x="296" y="140" width="182" height="54"/><text x="387" y="163" text-anchor="middle">loss ⇄ sampling</text><text x="387" y="180" text-anchor="middle" class="sm">training · generation</text></g>
+      <g class="stage" data-go="s12"><rect x="126" y="140" width="146" height="54"/><text x="199" y="163" text-anchor="middle">TESTO nuovo</text><text x="199" y="180" text-anchor="middle" class="sm">BPE decode</text></g>
+      <circle class="pulse" id="pulse" r="4.5" cx="68" cy="45"/>
+    </svg>
+    <p class="hint">Un impulso percorre il filo: è la strada che ogni batch fa nel forward pass — e che ogni token generato rifà, ad ogni passo, in autoregressione.</p>
+  </div>
+</header>
+
+<section class="st" id="s00" style="padding-top:44px">
+  <div class="eyebrow">Prima di iniziare · quattro parole che ricorrono ovunque</div>
+  <p class="dim" style="margin-top:6px">Quattro concetti tornano in ogni stazione. Tienili a mente: tutto il resto è dettaglio di come questi quattro si combinano.</p>
+  <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; margin-top:14px">
+    <div class="gl"><b>parametro (peso)</b><p>Un numero <em>modificabile</em> della rete. «Imparare» = aggiustare gli 866 048 parametri finché le predizioni migliorano. Tutto il resto — softmax, ReLU, maschera, sampling — è calcolo fisso, senza nulla da apprendere.</p></div>
+    <div class="gl"><b>forward pass</b><p>Far scorrere i dati input → output attraverso i layer per ottenere una predizione. È l'unica cosa che accade in generazione.</p></div>
+    <div class="gl"><b>gradiente</b><p>Per ogni peso, la derivata ∂loss/∂w: di quanto, e in che verso, cambierebbe la loss muovendo quel peso. Spostando ogni peso <em>contro</em> il suo gradiente, la loss scende.</p></div>
+    <div class="gl"><b>appreso / learned</b><p>Una tabella o matrice «appresa» è inizializzata a caso e poi aggiustata dal gradiente, passo dopo passo, durante il training.</p></div>
+  </div>
+</section>
+
+<section class="st" id="s01">
+  <div class="eyebrow">Stazione 01 · Dimensioni &amp; iperparametri <span class="shape">(B, T, C, V, H, hs)</span></div>
+  <h2>Sei lettere che ricorrono ovunque</h2>
+  <p class="lead">Tutto <span class="tt">glassgpt.py</span> è annotato con shape come <span class="shp">(B, T, C)</span>: la misura di ogni dimensione di un tensore. Impararle qui rende leggibile ogni riga che segue — sono la segnaletica dell'intero modello.</p>
+  <p>Un tensore è un array n-dimensionale di numeri; la sua <em>shape</em> ne elenca le lunghezze. La convenzione del file è fissa: <strong>B</strong> è il <em>batch</em> (quante sequenze si processano insieme, in parallelo), <strong>T</strong> è la lunghezza di contesto (quanti token il modello guarda), <strong>C</strong> è la larghezza <span class="tt">n_embd</span> (quanti numeri descrivono ciascun token), <strong>V</strong> la dimensione del vocabolario, <strong>H</strong> il numero di attention head e <strong>hs&nbsp;=&nbsp;C/H</strong> la dimensione di un singolo head. Quindi un tensore <span class="shp">(32, 64, 128)</span> si legge: <em>«32 sequenze, ognuna di 64 token, ogni token descritto da 128 numeri»</em>.</p>
+  <div class="note"><b>Attenzione a T.</b> <span class="tt">BLOCK_SIZE</span> = 64 è il contesto <em>massimo</em>. Dentro <span class="tt">forward</span> la stessa lettera T indica la lunghezza <em>corrente</em> (≤ 64), che durante la generation cresce token dopo token fino a saturare la finestra.</div>
+
+  <div class="diag">                 C = N_EMBD = <b>128</b>  (larghezza: numeri per token)
+                 &lt;-------------------&gt;
+                 +-------------------+   |
+   un token  --&gt; | . . . . . . . . . |   |
+                 +-------------------+   |
+   T = <b>64</b> token  | . . . . . . . . . |   |   profondità: N_LAYER = <b>4</b> Block
+   di contesto   | . . . . . . . . . |   |   impilati uno sull'altro
+                 |        ...        |   |
+                 +-------------------+   |
+                 C si divide in H = <b>4</b> head  --&gt;  hs = C/H = <b>32</b> ciascuno
+                 [<i>__hs__</i>|<u>__hs__</u>|<b>__hs__</b>|__hs__]</div>
+
+  <div class="card demo">
+    <h4>Demo · esploratore di shape <span class="lbl">numeri veri</span></h4>
+    <p class="dim" style="margin-top:0">Muovi le tre dimensioni e leggi il tensore come si legge nel codice. Il conteggio degli elementi è B·T·C — la quantità di float32 che attraversa la rete a ogni forward.</p>
+    <div class="ctr">
+      <label class="sld">B <input type="range" id="shB" min="1" max="64" value="32"><output id="shBo">32</output></label>
+      <label class="sld">T <input type="range" id="shT" min="1" max="64" value="64"><output id="shTo">64</output></label>
+      <label class="sld">C <input type="range" id="shC" min="8" max="256" step="8" value="128"><output id="shCo">128</output></label>
+    </div>
+    <div class="stepbox" id="shOut"></div>
+  </div>
+
+  <h3>Ogni costante del file, con il suo perché</h3>
+  <p>Le righe 649–712 dichiarano tutti gli iperparametri. Ognuno è una scelta di progetto: valori più grandi aumentano la capacità ma rallentano il training (i valori qui sono dimensionati per allenarsi in minuti su una CPU).</p>
+  <table class="t"><thead><tr><th>Costante</th><th>Valore</th><th>Ruolo</th></tr></thead><tbody>
+    <tr><td>BLOCK_SIZE</td><td class="mono">64</td><td>T massimo: per predire il prossimo token il modello guarda al più i 64 precedenti. Il costo dell'attention cresce con T².</td></tr>
+    <tr><td>BATCH_SIZE</td><td class="mono">32</td><td>B: sequenze indipendenti per step. Più grande = gradiente meno rumoroso, più RAM.</td></tr>
+    <tr><td>N_EMBD</td><td class="mono">128</td><td>C, la larghezza. Deve essere divisibile per N_HEAD (c'è un <span class="tt">assert</span> a riga 322).</td></tr>
+    <tr><td>N_HEAD</td><td class="mono">4</td><td>H head in parallelo, ognuno su hs = 128/4 = 32 dimensioni: relazioni diverse tra i token.</td></tr>
+    <tr><td>N_LAYER</td><td class="mono">4</td><td>Profondità: quanti Block impilati.</td></tr>
+    <tr><td>DROPOUT</td><td class="mono">0.1</td><td>Frazione di attivazioni azzerate a caso <em>solo in training</em>: regolarizzazione contro l'overfitting.</td></tr>
+    <tr><td>INIT_STD</td><td class="mono">0.02</td><td>Deviazione standard della init gaussiana dei pesi; le proiezioni residuali usano 0.02/√(2·N_LAYER).</td></tr>
+    <tr><td>BPE_VOCAB_SIZE</td><td class="mono">512</td><td>V: 256 byte di base + 256 merge appresi.</td></tr>
+    <tr><td>MAX_ITERS</td><td class="mono">2000</td><td>Step di training (forward + backward + update).</td></tr>
+    <tr><td>EVAL_INTERVAL / EVAL_ITERS</td><td class="mono">300 / 100</td><td>Ogni 300 step si misura la loss mediando 100 batch (una misura sola sarebbe troppo rumorosa).</td></tr>
+    <tr><td>LEARNING_RATE</td><td class="mono">3e-4</td><td>Ampiezza di ogni update di AdamW: troppo grande diverge, troppo piccolo impara lentissimo.</td></tr>
+    <tr><td>SEED</td><td class="mono">1337</td><td><span class="tt">torch.manual_seed</span>: run identiche e riproducibili.</td></tr>
+    <tr><td>TEMPERATURE / TOP_K</td><td class="mono">0.8 / 50</td><td>Parametri di sampling in generation (stazione 12).</td></tr>
+    <tr><td>MAX_NEW_TOKENS</td><td class="mono">500</td><td>Token generati dopo il prompt (~4 caratteri l'uno con BPE).</td></tr>
+    <tr><td>DEVICE / FORCE_RETRAIN</td><td class="mono">cuda|cpu / False</td><td>GPU se disponibile; True ignora il checkpoint e riallena da zero.</td></tr>
+  </tbody></table>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · configurazione <span class="lines">righe 649–712 (estratto)</span></summary>
+<pre><code class="py">BLOCK_SIZE = 64  # T: maximum context length. To predict the next token, the
+#    model attends to at most the previous 64 tokens.
+BATCH_SIZE = 32  # B: how many independent sequences are processed each step.
+
+N_EMBD = 128  # C: each token and each position becomes a vector of 128 numbers.
+N_HEAD = 4    # H: number of attention heads. Each head works on 128/4 = 32 dims.
+N_LAYER = 4   # how many Transformer blocks are stacked: the network "depth".
+DROPOUT = 0.1
+INIT_STD = 0.02
+
+BPE_VOCAB_SIZE = 512  # vocabulary size: 256 base bytes + 256 learned merges.
+
+MAX_ITERS = 2000
+EVAL_INTERVAL = 300
+EVAL_ITERS = 100
+LEARNING_RATE = 3e-4
+
+SEED = 1337
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+torch.manual_seed(SEED)
+
+assert N_EMBD % N_HEAD == 0, "N_EMBD must be divisible by N_HEAD"
+HEAD_SIZE = N_EMBD // N_HEAD  # hs: size of a single head.
+
+PROMPT = ""
+MAX_NEW_TOKENS = 500
+TEMPERATURE = 0.8
+TOP_K = 50
+
+CHECKPOINT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model.pt")
+FORCE_RETRAIN = False</code></pre></details>
+</section>
+<section class="st" id="s02">
+  <div class="eyebrow">Stazione 02 · BPE Tokenizer <span class="shape">testo → id, fuori dalla rete, 0 parametri</span></div>
+  <h2>Dal testo ai numeri: Byte-Pair Encoding</h2>
+  <p class="lead">Una rete neurale opera su numeri. Il primo passo è quindi mappare il testo in <em>token id</em> interi — e il tokenizer di GlassGPT è un <strong>byte-level BPE</strong> costruito da zero nella classe <span class="tt">BPETokenizer</span> (righe 762–946).</p>
+  <p>L'idea in due mosse. <strong>1)&nbsp;Si parte dai byte:</strong> qualunque testo, in qualunque lingua, in UTF-8 è una sequenza di byte 0…255. Il vocabolario base ha quindi 256 token e <em>non esistono caratteri sconosciuti</em>: un'emoji o una lettera rara sono semplicemente più byte (con un tokenizer char-level, un carattere mai visto in training rompeva l'encoding). <em>Concretamente:</em> «vita» = 4 byte (118, 105, 116, 97), mentre la «à» di «città» = 2 byte (195, 160) — l'UTF-8 spende più byte sui caratteri non-ASCII, e per il tokenizer va benissimo così. <strong>2)&nbsp;Si impara a fondere le coppie più frequenti:</strong> si conta quali due token adiacenti compaiono più spesso (es. <span class="tt">i</span>+<span class="tt">n</span>) e li si fonde in un token nuovo (<span class="tt">in</span>, id 256). Si ripete: magari ora <span class="tt">in</span>+<span class="tt">g</span> → <span class="tt">ing</span>. Avanti così per <span class="tt">BPE_VOCAB_SIZE − 256 = 256</span> merge, finché il vocabolario arriva a V&nbsp;=&nbsp;512.</p>
+  <div class="diag">testo:   c a m m i n   c a m m i n a
+byte:   [99][97][109][109][105][110] ...        (0..255, vocab base)
+
+passo 1) conta le coppie adiacenti:
+         (109,109)=<b>"mm" ×2</b>   (97,109)="am" ×2   (99,97)="ca" ×2 ...
+passo 2) fondi la più frequente → "mm" diventa il nuovo id <b>[256]</b>
+         c a <b>[256]</b> i n   c a <b>[256]</b> i n a
+passo 3) ripeti: ora "ca" → [257], poi "[257]mm" → [258] ...
+         [258] i n   [258] i n a               (i token si allungano)</div>
+  <p>Il risultato: i token diventano <em>word piece</em> ricorrenti, la stessa frase diventa una sequenza <strong>più corta</strong> di token, e nello stesso <span class="tt">BLOCK_SIZE</span> = 64 entra più contesto. Le fusioni apprese vengono registrate in <span class="tt">merges</span> come <span class="tt">(id_a, id_b) → new_id</span>; l'ordine di apprendimento è anche la <strong>priorità</strong> con cui si applicano in <span class="tt">encode</span> (il merge più vecchio, cioè con id più basso, vince sempre — esattamente come in training). <span class="tt">vocab</span> mappa invece ogni id ai byte che rappresenta: i primi 256 sono i byte stessi, dal 256 in poi le fusioni.</p>
+  <div class="note"><b>Tre dettagli fedeli al file.</b> ① <em>Garanzia di taglia:</em> se il testo è troppo corto e i merge finiscono prima, <span class="tt">train</span> riempie i posti mancanti con token segnaposto <span class="tt">b""</span> inerti, così <span class="tt">vocab_size == 512</span> in ogni caso e la shape dell'embedding V×C non cambia mai. ② <em>Costo:</em> <span class="tt">encode</span> ricalcola <span class="tt">_get_stats</span> sull'intera sequenza a ogni merge → ~O(n·num_merge); un tokenizer di produzione usa strutture incrementali. ③ <em>Merge oltre gli spazi:</em> manca il pre-split in parole via regex, quindi il BPE può fondere token <em>attraverso</em> gli spazi (es. «del_» come token unico) — limite dichiarato nei commenti.</div>
+
+  <div class="card demo">
+    <h4>Demo A · allena il BPE, un merge alla volta <span class="lbl">replica fedele di _get_stats + _merge</span></h4>
+    <p class="dim" style="margin-top:0">Lo stesso algoritmo del file, riscritto in JS: conta le coppie adiacenti, fonde la vincitrice, registra il merge. Guarda la sequenza accorciarsi e il vocabolario crescere.</p>
+    <textarea id="bpeText" rows="2" spellcheck="false">nel mezzo del cammin di nostra vita mi ritrovai per una selva oscura, che la diritta via era smarrita</textarea>
+    <div class="ctr">
+      <button class="b warm" id="bpeStep">Esegui 1 merge</button>
+      <button class="b" id="bpeStep10">×10 merge</button>
+      <button class="b" id="bpeAuto">▶ Auto</button>
+      <button class="b" id="bpeReset">Reset</button>
+      <span class="mono dim" id="bpeStats"></span>
+    </div>
+    <div class="mlab">Sequenza di token correnti <b id="bpeLen"></b></div>
+    <div class="tokline" id="bpeIds"></div>
+    <div class="grid2">
+      <div>
+        <div class="mlab">_get_stats → coppie più frequenti <span class="faint">(la <b>vincitrice</b> sarà fusa)</span></div>
+        <div class="pairs" id="bpePairs"></div>
+      </div>
+      <div>
+        <div class="mlab">Vocabolario appreso <span class="faint">(ultimi merge)</span></div>
+        <div class="pairs" id="bpeVocab"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card demo">
+    <h4>Demo B · encode / decode con il tokenizer vero <span class="lbl">512 token, allenato ora sul testo di Dante ×40</span></h4>
+    <p class="dim" style="margin-top:0">Al caricamento la pagina ha allenato in JS lo <em>stesso</em> tokenizer del repo (256 merge sul <span class="tt">FALLBACK_TEXT</span>: le 21 terzine dell'Inferno ripetute 40 volte). Scrivi un testo: viene codificato applicando i merge in ordine di priorità. <strong>Clicca un token</strong> per vedere da quali fusioni è nato. Compaiono token lunghissimi: con un testo così ripetitivo (×40) gli ultimi merge incollano interi versi — è il comportamento reale del file, ed è il motivo per cui i commenti del repo insistono sulla varietà del testo. Nelle demo delle prossime stazioni si usa lo stesso training <em>fotografato a 96 merge</em>, quando i token sono ancora word piece leggibili.</p>
+    <div id="bpeReady" class="mono dim" style="font-size:12.5px">⏳ training del tokenizer in corso…</div>
+    <textarea id="encText" rows="2" spellcheck="false">Nel mezzo del cammin di nostra vita mi ritrovai per una selva oscura</textarea>
+    <div class="ctr">
+      <button class="b warm" id="encGo">encode()</button>
+      <span class="mono dim" id="encStats"></span>
+    </div>
+    <div class="tokline" id="encOut"></div>
+    <div class="stepbox" id="encTree" style="display:none"></div>
+    <div class="mlab">decode() → round-trip</div>
+    <div class="console" id="encDec" style="max-height:80px"></div>
+  </div>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · BPETokenizer, il cuore <span class="lines">righe 762–946 (estratto)</span></summary>
+<pre><code class="py">@staticmethod
+def _get_stats(ids):
+    """Count the frequency of every pair of CONSECUTIVE tokens in `ids`."""
+    counts = {}
+    for pair in zip(ids, ids[1:]):
+        counts[pair] = counts.get(pair, 0) + 1
+    return counts
+
+@staticmethod
+def _merge(ids, pair, new_id):
+    """Replace every occurrence of `pair` with the single token `new_id`.
+    Example: _merge([1, 2, 3, 1, 2], (1, 2), 99) -> [99, 3, 99]."""
+    out, i = [], 0
+    while i < len(ids):
+        if i < len(ids) - 1 and ids[i] == pair[0] and ids[i + 1] == pair[1]:
+            out.append(new_id); i += 2
+        else:
+            out.append(ids[i]); i += 1
+    return out
+
+def train(self, text, target_vocab_size, verbose=True):
+    num_merges = target_vocab_size - 256
+    ids = list(text.encode("utf-8"))     # text -> list of bytes (0..255)
+    self._reset()
+    for i in range(num_merges):
+        stats = self._get_stats(ids)
+        if not stats: break              # text too short: nothing left to merge
+        pair = max(stats, key=stats.get) # the most frequent pair
+        new_id = 256 + i
+        ids = self._merge(ids, pair, new_id)
+        self.merges[pair] = new_id
+        self.vocab[new_id] = self.vocab[pair[0]] + self.vocab[pair[1]]
+    for new_id in range(len(self.vocab), target_vocab_size):
+        self.vocab[new_id] = b""         # inert placeholders: vocab_size is guaranteed
+
+def encode(self, text):
+    ids = list(text.encode("utf-8"))
+    while len(ids) >= 2:
+        stats = self._get_stats(ids)
+        pair = min(stats, key=lambda p: self.merges.get(p, float("inf")))
+        if pair not in self.merges: break
+        ids = self._merge(ids, pair, self.merges[pair])
+    return ids
+
+def decode(self, ids):
+    blob = b"".join(self.vocab[i] for i in ids)
+    return blob.decode("utf-8", errors="replace")</code></pre></details>
+</section>
+
+<section class="st" id="s03">
+  <div class="eyebrow">Stazione 03 · Dataset &amp; get_batch <span class="shape">x, y : (B, T)</span></div>
+  <h2>Il trucco del language modeling: y = x spostato di 1</h2>
+  <p class="lead">Non servono etichette: il testo <em>è</em> il proprio dataset. Il target di ogni posizione è semplicemente <strong>il token successivo</strong>. In un solo passaggio la rete fa T predizioni per sequenza.</p>
+  <p><span class="tt">prepare_data()</span> (righe 958–1009) legge <span class="tt">input.txt</span> se esiste, altrimenti usa il <span class="tt">FALLBACK_TEXT</span> incorporato — le prime 21 terzine dell'Inferno di Dante, ripetute ×40 per avere abbastanza dati mantenendo varietà interna (un testo banalmente ripetitivo farebbe collassare il BPE in pochissimi token). Poi allena il BPE, codifica tutto in un tensore di id e lo divide: <strong>90% train, 10% validation</strong>. Si valuta su dati mai visti, perché misurare sui dati di training gonfierebbe le prestazioni. Un <span class="tt">assert</span> finale garantisce che entrambe le parti superino <span class="tt">BLOCK_SIZE</span> token, altrimenti <span class="tt">get_batch</span> non potrebbe ritagliare sequenze.</p>
+  <div class="diag">data:  ... 10  22   5   8  41  17 ...        (un lungo stream di id)
+           [------ x, T token ------]
+  x  =      10  22   5   8                    contesto in ingresso
+  y  =          22   5   8  41                target = x spostato di +1
+            ^    ^    ^    ^
+            |    |    |    +-- dopo [10,22,5,8]  il target è <b>41</b>
+            |    |    +------- dopo [10,22,5]    il target è <b>8</b>
+            |    +------------ dopo [10,22]      il target è <b>5</b>
+            +----------------- dopo [10]         il target è <b>22</b></div>
+  <p><span class="tt">get_batch(split)</span> pesca <span class="tt">B = 32</span> posizioni di partenza casuali con <span class="tt">torch.randint(len(d) − BLOCK_SIZE, (B,))</span> (il <span class="tt">−BLOCK_SIZE</span> evita di sforare la fine), impila le finestre con <span class="tt">torch.stack</span> e restituisce <span class="shp">x (B, T)</span> e <span class="shp">y (B, T)</span> con <span class="tt">y[i] = x[i+1]</span>: una <em>sliding window</em> sul flusso di token.</p>
+
+  <div class="card demo">
+    <h4>Demo · estrai un batch vero <span class="lbl">B=4, T=8 sui token reali di Dante</span></h4>
+    <p class="dim" style="margin-top:0">Lo stream sotto sono i primi token del testo di Dante codificati dal BPE della stazione 02 (fotografato a 96 merge: token leggibili). Ogni clic ripete <span class="tt">get_batch("train")</span>: 4 partenze casuali, 4 finestre evidenziate, e le matrici x / y con lo shift di 1. Passa il mouse sulle celle per leggere il testo del token.</p>
+    <div class="ctr"><button class="b warm" id="gbGo">get_batch("train")</button>
+      <span class="mono dim">ix = torch.randint(len(d) − T, (B,)) → <span id="gbIx" class="num"></span></span></div>
+    <div class="mlab">Stream di token id (estratto di train_data)</div>
+    <div class="tokline" id="gbStream" style="gap:3px"></div>
+    <div class="matrow" style="margin-top:14px">
+      <div><div class="mlab">x <b>(4, 8)</b> contesto</div><div class="matwrap"><div class="mat" id="gbX"></div></div></div>
+      <div><div class="mlab">y <b>(4, 8)</b> target (+1)</div><div class="matwrap"><div class="mat" id="gbY"></div></div></div>
+    </div>
+    <div class="mlab">Le 8 predizioni contenute nella riga 0</div>
+    <div class="console" id="gbTasks" style="max-height:190px"></div>
+  </div>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · get_batch <span class="lines">righe 1011–1043</span></summary>
+<pre><code class="py">def get_batch(split):
+    d = train_data if split == "train" else val_data
+    # Pick B random start positions. -BLOCK_SIZE so the window stays in bounds.
+    ix = torch.randint(len(d) - BLOCK_SIZE, (BATCH_SIZE,))          # shape (B,)
+    x = torch.stack([d[i : i + BLOCK_SIZE] for i in ix])            # shape (B, T)
+    y = torch.stack([d[i + 1 : i + BLOCK_SIZE + 1] for i in ix])    # shape (B, T)
+    return x.to(DEVICE), y.to(DEVICE)</code></pre></details>
+</section>
+
+<section class="st" id="s04">
+  <div class="eyebrow">Stazione 04 · Embeddings <span class="shape">idx (B,T) → x (B,T,C)</span></div>
+  <h2>Il COSA più il DOVE: nasce il residual stream</h2>
+  <p class="lead">Un token id è un intero che non porta alcuna informazione sul token. L'<strong>embedding</strong> mappa ogni id in un vettore appreso di C&nbsp;=&nbsp;128 numeri reali: partono casuali, e il training li aggiusta così che token usati in contesti simili ottengano vettori simili.</p>
+  <p>Servono <em>due</em> tabelle. <span class="tt">token_embedding</span> <span class="shp">(V, C) = (512, 128)</span> è una lookup table: dato l'id, restituisce la sua riga — il <strong>COSA</strong> (contenuto del token). <span class="tt">position_embedding</span> <span class="shp">(T, C) = (64, 128)</span> codifica invece il <strong>DOVE</strong>: la self-attention è <em>permutation-invariant</em> — senza informazione di posizione «abc» e «cba» produrrebbero la stessa rappresentazione — quindi a ogni token si somma un vettore appreso che codifica il suo indice 0,&nbsp;1,&nbsp;2…</p>
+  <div class="formula">x <span class="op">=</span> token_embedding[idx] <span class="op">+</span> position_embedding[0..T−1] <span class="op">→</span> (B, T, C)</div>
+  <p>La somma sfrutta il <strong>broadcasting</strong>: <span class="tt">pos_emb</span> ha shape <span class="shp">(T, C)</span> e si "allarga" automaticamente su tutte le B sequenze del batch — ogni sequenza usa le stesse posizioni 0…T−1. Nota fedele al codice: <span class="tt">pos = torch.arange(T, device=idx.device)</span> prende il device <em>dagli input</em>, non dalla costante globale, così il modello gira ovunque girino i suoi dati. Il tensore risultante <span class="shp">x (B, T, C)</span> è il <strong>residual stream</strong>: il "nastro trasportatore" a cui ogni Block della stazione 08 aggiungerà i propri contributi senza mai sostituirlo.</p>
+
+  <h3>Che cosa significano, quei numeri</h3>
+  <p>All'inizio non significano niente: partono casuali e l'addestramento decide. Ma la disposizione su cui l'addestramento converge spiega buona parte dell'architettura che viene dopo.</p>
+  <p><strong>Le direzioni portano significato.</strong> Nello spazio su cui l'addestramento converge, le direzioni corrispondono a proprietà: la differenza fra due vettori imparentati, sommata a un terzo, cade vicino a un quarto:</p>
+  <div class="formula">embedding("re") <span class="op">−</span> embedding("uomo") <span class="op">+</span> embedding("donna") <span class="op">≈</span> embedding("regina")</div>
+  <p>Il passo da «uomo» a «donna» è lo stesso che porta da «re» a «regina»: una direzione dello spazio ha finito per codificare qualcosa come il genere. Vale anche per il numero — <span class="tt">embedding("gatti") − embedding("gatto")</span> è una direzione «più di uno», e il suo prodotto scalare con altri sostantivi risulta sistematicamente più alto per i plurali. Gli embedding veri approssimano soltanto queste identità, perché «regina» non è solo «re al femminile», ma il principio regge: il significato vive nelle direzioni, e uno spazio con molte dimensioni ha posto per molte direzioni indipendenti.</p>
+  <p><strong>Il prodotto scalare misura l'allineamento.</strong> È l'operazione su cui è costruito tutto il resto: positivo quando due vettori puntano dalla stessa parte, zero quando sono perpendicolari, negativo quando sono opposti. Ogni prodotto fra matrici in questo file è una pila di prodotti scalari, e la domanda è sempre la stessa — quanto sono allineati questi due? Vale per <span class="tt">Q · Kᵀ</span> nell'attention, per le righe dell'up-projection nell'MLP e per <span class="tt">lm_head</span>, dove il prodotto scalare fra x e l'embedding del token <em>v</em> è esattamente il logit di <em>v</em>.</p>
+  <div class="note"><b>Il vettore assorbe il contesto.</b> La tabella degli embedding è una lookup e non sa niente di ciò che le sta intorno: il vettore di «piano» è identico in «il piano di sopra», «suona il piano» e «il piano è fallito» — una riga di tabella, tre significati scollegati. Tutto quello che viene dopo serve a rimediare. Ogni Block <em>somma</em> al vettore che riceve, così il significato si accumula strato dopo strato: è per questo che l'ultima posizione, l'unica che la generazione legge, può arrivare a contenere tutto il contesto rilevante.</div>
+
+  <div class="card demo">
+    <h4>Demo · lookup e somma, con i numeri dell'init <span class="lbl">C ridotto a 8 per leggibilità · valori ~ N(0, 0.02)</span></h4>
+    <p class="dim" style="margin-top:0">Scegli un token della frase (chip) e la sua posizione: sotto compaiono la riga pescata da ciascuna tabella e la somma elemento per elemento. I valori sono campionati come nel file (<span class="tt">Normal(0, 0.02)</span>, seed fisso): è il modello <em>appena inizializzato</em>, prima del training.</p>
+    <div class="tokline" id="embToks"></div>
+    <div class="ctr"><label class="sld">posizione <input type="range" id="embPos" min="0" max="7" value="0"><output id="embPosO">0</output></label></div>
+    <div class="mlab">token_embedding[<b id="embIdLbl">·</b>] <span class="faint">— riga della tabella (512 × 128), qui 8 colonne</span></div>
+    <div class="matwrap"><div class="mat" id="embTok"></div></div>
+    <div class="mlab">+ position_embedding[<b id="embPosLbl">0</b>] <span class="faint">— riga della tabella (64 × 128)</span></div>
+    <div class="matwrap"><div class="mat" id="embPosM"></div></div>
+    <div class="mlab">= x <span class="faint">— l'ingresso del primo Block: il residual stream</span></div>
+    <div class="matwrap"><div class="mat" id="embSum"></div></div>
+  </div>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · le due tabelle e la somma <span class="lines">righe 1464–1468 · 1522–1558</span></summary>
+<pre><code class="py"># in GPT.__init__
+self.token_embedding = nn.Embedding(VOCAB_SIZE, N_EMBD)    # (V, C)
+self.position_embedding = nn.Embedding(BLOCK_SIZE, N_EMBD) # (T, C)
+
+# in GPT.forward
+def forward(self, idx, targets=None):
+    B, T = idx.shape
+    tok_emb = self.token_embedding(idx)          # (B, T, C)
+    pos = torch.arange(T, device=idx.device)     # (T,)
+    pos_emb = self.position_embedding(pos)       # (T, C)
+    # Sum content + position. pos_emb (T,C) broadcasts over all B sequences.
+    x = tok_emb + pos_emb                        # (B, T, C)</code></pre></details>
+</section>
+<section class="st" id="s05">
+  <div class="eyebrow">Stazione 05 · Un Head di self-attention <span class="shape">x (B,T,C) → out (B,T,hs)</span></div>
+  <h2>Query, Key, Value: chi guarda chi</h2>
+  <p class="lead">Per predire il prossimo token, alcune posizioni del contesto contano più di altre: in «…the runnin_» la desinenza «g» dipende da «runnin», non da «the». Un <strong>head</strong> impara, per ogni posizione, <em>quali posizioni precedenti pesare</em> — è il meccanismo con cui l'informazione si mescola tra i token.</p>
+  <p>Ogni vettore-token viene proiettato linearmente (tre <span class="tt">nn.Linear(C, hs, bias=False)</span>, senza bias) in tre viste da hs&nbsp;=&nbsp;32 numeri: la <strong class="q">Query (Q)</strong> — ciò che il token <em>cerca</em>, confrontata con le Key altrui; la <strong class="k">Key (K)</strong> — ciò che il token <em>offre</em>, confrontata con le Query altrui; il <strong class="v">Value (V)</strong> — il contenuto che viene <em>aggregato</em> quando il token riceve attenzione. L'output del token <em>i</em> è la somma pesata dei <span class="v">Value</span> dei token <em>j</em>, con pesi dati da:</p>
+  <div class="formula">out<sub>i</sub> <span class="op">=</span> Σ<sub>j≤i</sub> softmax<sub>j</sub>( <span class="q">Q<sub>i</sub></span> · <span class="k">K<sub>j</sub></span> / √hs ) · <span class="v">V<sub>j</sub></span></div>
+  <p><strong>Una domanda, una risposta, una correzione.</strong> Ogni vettore-token viene moltiplicato per tre matrici distinte, e ne escono tre vettori con tre ruoli diversi. Sulla frase «la soffice creatura blu», il sostantivo «creatura» emette una Query che vale più o meno <em>ci sono aggettivi qui intorno?</em>; «soffice» e «blu» emettono Key che si allineano con quella domanda; e il Value di «soffice» è ciò che trasforma una creatura generica in una creatura soffice. Il confronto avviene sempre <strong>fra token diversi</strong>: la Query di «creatura» viene messa a prodotto scalare con la Key di ciascun token che la precede, una coppia alla volta. Un prodotto scalare grande significa che quella Key risponde a quella Query, ed è il primo calcolo che il head esegue.</p>
+  <div class="note"><b>Il Value è una correzione.</b> Il vettore Value viene <em>sommato</em> al residual stream: l'attention propone aggiustamenti a quello che il token già porta con sé. E l'esempio aggettivo-sostantivo resta una finzione comoda: i pesi di un head vero fanno qualunque cosa riduca la loss, e di solito un head solo porta avanti più compiti scollegati insieme.</div>
+  <p>Tre aggettivi definiscono il meccanismo. <strong>Self</strong>: Q, K e V vengono tutti dalla stessa sequenza. <strong>Causale</strong>: un token guarda solo posizioni ≤ della propria — il futuro è mascherato, perché contiene proprio i token da predire. <strong>Scalata</strong>: la divisione per √hs impedisce ai dot product di crescere con hs; senza, la softmax saturerebbe (uscite ≈ 0 o 1) e i gradienti svanirebbero. La maschera è una matrice triangolare inferiore (<span class="tt">tril</span>): dove vale 0 si scrive −∞, che la softmax trasforma in peso esattamente 0.</p>
+  <div class="diag">                  chi viene guardato →
+                    t0     t1     t2     t3
+          t0  [  ok   | <s>-inf</s>  | <s>-inf</s>  | <s>-inf</s> ]
+guarda    t1  [  ok   |  ok   | <s>-inf</s>  | <s>-inf</s> ]     <s>-inf</s> → 0 dopo la softmax
+  ↓       t2  [  ok   |  ok   |  ok   | <s>-inf</s> ]
+          t3  [  ok   |  ok   |  ok   |  ok  ]</div>
+  <p>Nel codice: <span class="tt">wei = q @ k.transpose(−2,−1) * hs<sup>−0.5</sup></span> produce <span class="shp">(B, T, T)</span> affinità; <span class="tt">masked_fill(tril==0, −inf)</span> applica la causalità; <span class="tt">softmax(dim=−1)</span> normalizza ogni riga a somma 1; un <span class="tt">dropout</span> agisce sui pesi in training; infine <span class="tt">out = wei @ v</span> restituisce <span class="shp">(B, T, hs)</span>. La <span class="tt">tril</span> non vive nell'head: è definita una sola volta in <span class="tt">MultiHeadAttention</span> e passata a tutti gli head (stazione 06).</p>
+
+  <div class="card demo">
+    <h4>Demo · un head, passo per passo <span class="lbl">T=4 token veri · C=8 · hs=4 · matmul reali in JS</span></h4>
+    <p class="dim" style="margin-top:0">I 4 token sono i primi di «Nel mezzo del cammin» secondo il BPE della stazione 02 (96 merge); x viene dagli embeddings della stazione 04, amplificati ×30 (dopo il training le magnitudini crescono). Naviga i passi, <strong>clicca una riga-token</strong> per seguire il suo flusso, e prova gli interruttori: sono le due idee chiave del meccanismo.</p>
+    <div class="steps" id="atSteps"></div>
+    <div class="ctr">
+      <button class="b" id="atPrev">← indietro</button>
+      <button class="b warm" id="atNext">avanti →</button>
+      <label class="tog"><input type="checkbox" id="atMask" checked> causal mask</label>
+      <label class="tog"><input type="checkbox" id="atScale" checked> scaling 1/√hs</label>
+      <span class="mono dim">query: <span id="atQlbl" class="num"></span></span>
+    </div>
+    <div class="stepbox" id="atExplain"></div>
+    <div id="atStage" class="matwrap"></div>
+    <div id="atSat" style="display:none">
+      <div class="mlab">Perché lo scaling: satura la softmax</div>
+      <p class="dim" style="font-size:13.5px;margin:4px 0 8px">Moltiplica gli score della riga selezionata: più crescono in modulo, più la softmax si concentra su un solo token (≈ one-hot) e il gradiente verso gli altri svanisce. La divisione per √hs tiene i punteggi in una zona "morbida".</p>
+      <div class="ctr"><label class="sld">moltiplicatore ×<input type="range" id="atSatM" min="1" max="12" step="0.5" value="1"><output id="atSatO">1.0</output></label></div>
+      <div class="bars" id="atSatBars" style="height:110px"></div>
+    </div>
+  </div>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · Head.forward <span class="lines">righe 1169–1198</span></summary>
+<pre><code class="py">def forward(self, x, tril):
+    # x:    (B, T, C). B sequences, T tokens, C numbers per token.
+    # tril: (T, T) lower-triangular of ones = the causal mask.
+    B, T, C = x.shape
+    k = self.key(x)      # (B, T, hs) - the KEY projection
+    q = self.query(x)    # (B, T, hs) - the QUERY projection
+
+    # Attention scores: dot product between every Query and every Key.
+    # (B, T, hs) @ (B, hs, T) = (B, T, T). Divided by sqrt(hs): without it,
+    # large hs makes the dot products large, the softmax saturates
+    # (outputs near 0 or 1), and the gradients vanish.
+    wei = q @ k.transpose(-2, -1) * (HEAD_SIZE**-0.5)     # (B, T, T)
+
+    # Causal mask: where tril==0 (future tokens) put -infinity, so after
+    # the softmax those weights become 0. Token i never attends to j&gt;i.
+    wei = wei.masked_fill(tril == 0, float("-inf"))       # (B, T, T)
+
+    wei = F.softmax(wei, dim=-1)                          # (B, T, T)
+    wei = self.dropout(wei)
+
+    # Aggregation: Value vectors averaged with the attention weights.
+    v = self.value(x)    # (B, T, hs) - the VALUE projection
+    out = wei @ v        # (B,T,T) @ (B,T,hs) = (B, T, hs)
+    return out</code></pre></details>
+</section>
+
+<section class="st" id="s06">
+  <div class="eyebrow">Stazione 06 · Multi-Head Attention <span class="shape">H×(B,T,hs) → concat → (B,T,C)</span></div>
+  <h2>Quattro sguardi in parallelo</h2>
+  <p class="lead">Un solo head impara <em>una</em> relazione tra posizioni. GlassGPT ne fa girare <strong>H&nbsp;=&nbsp;4 in parallelo</strong>, ciascuno con le proprie proiezioni Q/K/V su hs&nbsp;=&nbsp;32 dimensioni: ogni head può specializzarsi in una relazione diversa (sintassi vicina, rime lontane, ripetizioni…).</p>
+  <div class="diag">x (B,T,128) --+--&gt; <i>Head 1</i> --&gt; (B,T,32) --+
+              +--&gt; <u>Head 2</u> --&gt; (B,T,32) --+   concat      proj (128→128)
+              +--&gt; <b>Head 3</b> --&gt; (B,T,32) --+--&gt; (B,T,128) ---&gt; (B,T,128)
+              +--&gt; Head 4 --&gt; (B,T,32) --+
+                    |                          |               |
+              Q/K/V indipendenti        4×32 = 128        mescola tra
+              per ogni head             (torna a C)        gli head</div>
+  <p>I quattro output <span class="shp">(B, T, 32)</span> vengono <strong>concatenati</strong> lungo l'ultima dimensione (<span class="tt">torch.cat(..., dim=−1)</span>): 4×32&nbsp;=&nbsp;128&nbsp;=&nbsp;C, si torna alla larghezza del residual stream. Segue una proiezione finale <span class="tt">proj: Linear(C, C)</span> che <em>mescola le informazioni tra gli head</em> (fin qui ognuno lavorava nel suo sottospazio isolato).</p>
+  <h3>Che cosa si guadagna, visto che il costo è identico</h3>
+  <p>Quattro head da 32 costano esattamente quanto un head solo da 128: <span class="tt">3 × 4 × 128 × 32 = 3 × 128 × 128 = 49 152</span> parametri in entrambi i casi. Il guadagno sta quindi altrove: <strong>ogni head esegue la <em>propria</em> softmax</strong>. Una posizione può così attendere all'aggettivo che ha a sinistra e al soggetto dieci token indietro nello stesso passaggio. Un head largo ha una sola distribuzione di attenzione da spendere, e dividerla fra due bersagli significa rinunciare a entrambi.</p>
+
+  <h3>Perché la mappa dei Value è spezzata in due</h3>
+  <p>La correzione prodotta da un head deve atterrare nel residual stream, che ha C dimensioni: sulla carta la mappa dei Value va quindi da C a C. Scritta così costerebbe <span class="tt">128 × 128 = 16 384</span> parametri per head, contro i 4 096 di Query e di Key — una mappa che domina le altre due, con lo squilibrio che peggiora a ogni head aggiunto.</p>
+  <p>Per questo la si fa passare da una strozzatura. <span class="tt">Head.value</span> si occupa della discesa, C → hs; la risalita hs → C vive in un'unica matrice condivisa da tutto il blocco, <span class="tt">proj</span>, dove le quattro risalite stanno affiancate. I 32 slot del concat che appartengono a un head vengono toccati solo dalla propria fetta 128 × 32 della matrice, e i conti tornano esatti: <span class="tt">128 × 128 = 4 × (32 × 128)</span>, cioè 4 096 per head. La mappa dei Value completa di un head costa quindi 4 096 in discesa più 4 096 in risalita — quanto la sua Query e quanto la sua Key.</p>
+  <div class="note"><b>Che cosa comporta la strozzatura.</b> La mappa dei Value di ogni head resta vincolata a <em>rango hs</em>: ogni correzione che può produrre deve passare per 32 dimensioni, ed è una restrizione voluta. Da qui nasce anche una confusione di nomi: nei paper «la matrice dei Value» indica di solito solo la parte in discesa (C → hs), mentre la risalita viene descritta a parte come proiezione d'uscita del blocco, <span class="tt">W_O</span>. Sono la stessa cosa vista in due pezzi.</div>
+
+  <div class="note"><b>Due dettagli del file.</b> ① <span class="tt">proj</span> è marcata <span class="tt">IS_RESIDUAL_PROJ = True</span>: scrive nel residual stream, quindi in <span class="tt">_init_weights</span> riceverà la init <em>ridotta</em> 0.02/√(2·N_LAYER) (stazione 09). ② La causal mask è registrata qui una volta sola con <span class="tt">register_buffer("tril", torch.tril(torch.ones(T,T)))</span>: fa parte del modello (segue <span class="tt">.to(device)</span>, finisce nel checkpoint) ma <em>non</em> è un parametro allenabile; in <span class="tt">forward</span> viene affettata alla lunghezza corrente (<span class="tt">self.tril[:T,:T]</span>, perché in generation T cresce) e passata identica a tutti gli head — un buffer solo invece di H·N_LAYER copie.</div>
+
+  <div class="card demo">
+    <h4>Demo · split → 4 head → concat → proj <span class="lbl">H=4 · hs=2 · C=8 · numeri reali</span></h4>
+    <p class="dim" style="margin-top:0">Stessi 4 token della stazione 05. Ogni head (colore diverso, pesi diversi) produce una vista (4×2); la concatenazione le affianca ricostruendo (4×8); la proiezione finale le mescola. Premi <em>Anima</em> per vedere il flusso.</p>
+    <div class="ctr"><button class="b warm" id="mhGo">▶ Anima il flusso</button><span class="mono dim" id="mhPhase"></span></div>
+    <div class="matrow" id="mhHeads"></div>
+    <div style="margin-top:10px">
+      <div><div class="mlab">concat → <b>(4, 8)</b> <span class="faint">4 blocchi di colonne, uno per head</span></div><div class="matwrap"><div class="mat" id="mhCat"></div></div></div>
+      <div class="mono" style="margin:10px 0 10px 6px; color:var(--faint); font-weight:600; font-size:15px">↓&nbsp; proj (128→128): mescola gli head &nbsp;↓</div>
+      <div><div class="mlab">out = proj(concat) <b>(4, 8)</b></div><div class="matwrap"><div class="mat" id="mhOut"></div></div></div>
+    </div>
+  </div>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · MultiHeadAttention <span class="lines">righe 1253–1279</span></summary>
+<pre><code class="py">def __init__(self):
+    super().__init__()
+    self.heads = nn.ModuleList([Head() for _ in range(N_HEAD)])
+    # Final projection applied after concatenating the heads. H*hs = C.
+    self.proj = nn.Linear(N_EMBD, N_EMBD)
+    self.proj.IS_RESIDUAL_PROJ = True   # -&gt; scaled init (see GPT._init_weights)
+    self.dropout = nn.Dropout(DROPOUT)
+    # THE single copy of the causal mask, shared by all heads in this layer.
+    # register_buffer: part of the model (moves with .to(device), saved in the
+    # checkpoint) but NOT a trainable parameter.
+    self.register_buffer("tril", torch.tril(torch.ones(BLOCK_SIZE, BLOCK_SIZE)))
+
+def forward(self, x):
+    # Slice the mask to the current length T (in generation T grows).
+    T = x.shape[1]
+    tril = self.tril[:T, :T]                              # (T, T)
+    # Run the H heads and concatenate along the last dim:
+    # H times (B, T, hs) -&gt; (B, T, H*hs) = (B, T, C)
+    out = torch.cat([h(x, tril) for h in self.heads], dim=-1)   # (B, T, C)
+    out = self.dropout(self.proj(out))                    # (B, T, C)
+    return out</code></pre></details>
+</section>
+
+<section class="st" id="s07">
+  <div class="eyebrow">Stazione 07 · FeedForward (MLP) <span class="shape">(B,T,C) → (B,T,4C) → (B,T,C)</span></div>
+  <h2>Espandi, filtra, ricomprimi — un token alla volta</h2>
+  <p class="lead">L'attention <em>mescola</em> informazione tra le posizioni; il <strong>FeedForward</strong> la <em>elabora</em> posizione per posizione, applicando gli stessi pesi a ogni token in modo indipendente. Nei modelli grandi è qui che vive la maggioranza dei parametri.</p>
+  <div class="formula">(B,T,128) <span class="op">—Linear→</span> (B,T,512) <span class="op">—ReLU→</span> (B,T,512) <span class="op">—Linear→</span> (B,T,128)</div>
+  <p>La prima <span class="tt">Linear(C, 4C)</span> <strong>espande ×4</strong>: uno spazio nascosto più largo (512) dà al layer più capacità di calcolo. La <strong>ReLU</strong> azzera i valori negativi: è la non-linearità, e senza di essa due Linear consecutive collasserebbero in un'unica mappa lineare — la rete non potrebbe apprendere funzioni non lineari. La seconda <span class="tt">Linear(4C, C)</span> <strong>ricomprime</strong> a C per rientrare nel residual stream; è definita a parte nel codice proprio per marcarla <span class="tt">IS_RESIDUAL_PROJ</span> (init ridotta). Chiude un <span class="tt">Dropout(0.1)</span>, attivo solo in training.</p>
+
+  <h3>Che cosa fanno davvero le due matrici</h3>
+  <p>L'attention sposta informazione fra le posizioni. Questo blocco lascia ogni posizione per conto suo — e allora a cosa servono i due terzi della rete? La risposta più accreditata è che qui stanno i <strong>fatti</strong>, e che le due matrici hanno ruoli opposti: la prima fa domande, la seconda scrive risposte.</p>
+  <p><strong>L'up-projection va letta per righe.</strong> Ognuna delle sue 4C righe è un vettore nello stesso spazio di x, quindi il prodotto scalare di una riga con x chiede: quanto questo token punta nella direzione di quella riga? Si supponga che una riga contenga la direzione <em>(nome «Michael») + (cognome «Jordan»)</em>. Ogni metà che corrisponde contribuisce circa 1 al prodotto scalare, quindi quella riga produce <span class="tt">2</span> se x codifica il nome completo, <span class="tt">1</span> se ne codifica solo metà (un «Michael Phelps» qualsiasi), <span class="tt">0</span> o meno se nessuno dei due.</p>
+  <p>Il <strong>bias</strong> aggiunge una soglia: con −1 in quella posizione l'uscita della riga vale 1 per il nome completo, 0 per una metà sola, negativa quando non corrisponde nulla. La <strong>ReLU</strong> poi azzera tutto ciò che è negativo, e quel che esce è un sì/no netto — diverso da zero per «Michael Jordan», zero tondo per «Michael Phelps» o «Alexis Jordan». Senza, il layer lascerebbe passare credito parziale per una mezza corrispondenza. Soglia più taglio si comportano insieme come una <strong>porta AND</strong>.</p>
+  <p>I valori che escono dalla ReLU sono quelli che si chiamano <strong>neuroni</strong> del transformer: 4C per token, detti <em>attivi</em> quando sono positivi.</p>
+  <p><strong>La down-projection va letta per colonne.</strong> Ognuna delle 4C colonne è anch'essa un vettore nello spazio di x, e l'uscita è la somma di quelle colonne, ciascuna scalata dal proprio neurone. Una colonna è dunque ciò che viene <em>aggiunto</em> al token quando il suo neurone si accende. Se la colonna abbinata al neurone «Michael Jordan» contiene la direzione «basketball», il blocco ha immagazzinato un fatto: entra un vettore che codifica quel nome, esce con «basketball» sommato.</p>
+  <div class="formula">riga · x <span class="op">→</span> neurone <span class="op">·</span> colonna <span class="op">→</span> sommato allo stream<br><span class="dim">«è questo X?»</span> <span class="op"> </span> <span class="dim">«allora aggiungi Y»</span></div>
+  <div class="note"><b>Superposizione: perché i neuroni non si leggono uno per uno.</b> Guardando dentro un modello addestrato non si trova quasi mai un «neurone Michael Jordan»: le feature stanno sparse su molti neuroni insieme, e c'è un motivo. Feature disposte lungo direzioni <em>esattamente</em> perpendicolari non si disturbano a vicenda, e uno spazio a C dimensioni ne contiene esattamente C: sistemate così, le feature possono essere al massimo C. Basta però allentare il requisito a «quasi perpendicolari», ad esempio 85° invece di 90°, e il numero di direzioni disponibili cresce esponenzialmente con C (conseguenza del lemma di Johnson-Lindenstrauss): alle 12 288 dimensioni di GPT-3 sono decine di miliardi. Conviene quindi impacchettare molte più feature che dimensioni, accettando un po' di interferenza — al prezzo della leggibilità: una feature finisce per essere un <em>disegno</em> distribuito su molti neuroni. Con i C = 128 di questo file lo spazio per tutto ciò è minimo: il meccanismo gira lo stesso, su uno spazio troppo piccolo perché renda.</div>
+
+  <div class="card demo">
+    <h4>Demo · un token attraversa l'MLP <span class="lbl">C=8 → 32 → 8 · pesi seedati, numeri reali</span></h4>
+    <p class="dim" style="margin-top:0">Il vettore di un token entra, si espande a 32 numeri, la ReLU spegne i negativi (in <span class="neg">rosa</span>, azzerati), e la seconda Linear ricomprime a 8. Rigenera l'input e osserva quanti neuroni sopravvivono.</p>
+    <div class="ctr"><button class="b warm" id="ffGo">↻ Nuovo input casuale</button><span class="mono dim" id="ffDead"></span></div>
+    <div class="mlab">x in ingresso <b>(8)</b></div><div class="matwrap"><div class="mat" id="ffIn"></div></div>
+    <div class="mlab">dopo Linear C→4C <b>(32)</b> <span class="faint">pre-attivazione</span></div><div class="matwrap"><div class="mat" id="ffPre"></div></div>
+    <div class="mlab">dopo ReLU <b>(32)</b> <span class="faint">max(0, ·): i negativi diventano 0</span></div><div class="matwrap"><div class="mat" id="ffRelu"></div></div>
+    <div class="mlab">dopo Linear 4C→C <b>(8)</b> <span class="faint">pronto per la somma residuale</span></div><div class="matwrap"><div class="mat" id="ffOut"></div></div>
+  </div>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · FeedForward <span class="lines">righe 1376–1392</span></summary>
+<pre><code class="py">def __init__(self):
+    super().__init__()
+    # The second Linear (4C -&gt; C) is the projection that adds to the residual
+    # stream: it is defined separately to mark it and give it the scaled init.
+    proj = nn.Linear(4 * N_EMBD, N_EMBD)      # 4C -&gt; C  (re-compression)
+    proj.IS_RESIDUAL_PROJ = True
+    self.net = nn.Sequential(
+        nn.Linear(N_EMBD, 4 * N_EMBD),        # C -&gt; 4C  (expansion)
+        nn.ReLU(),                            # non-linearity
+        proj,
+        nn.Dropout(DROPOUT),
+    )
+
+def forward(self, x):
+    return self.net(x)                        # (B, T, C) -&gt; (B, T, C)</code></pre></details>
+</section>
+
+<section class="st" id="s08">
+  <div class="eyebrow">Stazione 08 · Block: pre-norm + residual <span class="shape">x = x + sublayer(LayerNorm(x))</span></div>
+  <h2>Il pattern che rende possibile la profondità</h2>
+  <p class="lead">Un <strong>Block</strong> = attention (mescola tra posizioni) + MLP (trasforma per posizione). GlassGPT ne impila 4; i modelli grandi, decine. Due meccanismi rendono ottimizzabile la pila — e sono presenti in <em>ogni</em> Transformer.</p>
+  <div class="diag">x ----------------------------(+)------------------------------(+)----&gt; x
+|                              ^                                ^
+|  l'input viene sommato        \  identity path, di nuovo       \
+|  <b>inalterato</b>                    \                                \
++--&gt; LayerNorm --&gt; Multi-Head ---+   +--&gt; LayerNorm --&gt; FeedFwd ---+
+                  (mescola posizioni)     (per posizione)
+
+        x = x + MultiHeadAttention(LayerNorm(x))   # riga 1430
+        x = x + FeedForward(LayerNorm(x))          # riga 1431</div>
+  <p><strong>1) Residual connection.</strong> L'output del sublayer viene <em>sommato</em> all'input (<span class="tt">x = x + sublayer(x)</span>), mai sostituito. Esiste così un cammino identità lungo cui attivazioni e — soprattutto — <em>gradiente</em> fluiscono intatti attraverso la profondità: nel backward, la derivata di <span class="tt">x + f(x)</span> contiene sempre un termine 1. Senza residual, reti profonde diventano difficilissime da ottimizzare (il segnale si attenua moltiplicativamente strato dopo strato).</p>
+  <p><strong>2) LayerNorm, in pre-norm.</strong> Normalizza <em>ogni token</em> a media 0 e varianza 1 lungo i suoi C canali, poi applica scala γ e traslazione β apprese: attivazioni di magnitudine limitata, training stabile. «Pre-norm» = si normalizza <em>prima</em> del sublayer (dentro la parentesi), non dopo: il ramo identità resta davvero pulito.</p>
+  <div class="formula">LayerNorm(x)<sub>c</sub> <span class="op">=</span> γ<sub>c</sub> · ( x<sub>c</sub> − μ ) / √(σ² + ε) <span class="op">+</span> β<sub>c</sub> <span class="op">   con μ, σ² calcolate sui C canali del token</span></div>
+
+  <h3>L'altra condizione della profondità: dove entra la non-linearità</h3>
+  <p>Una pila di prodotti fra matrici resta un prodotto fra matrici: <span class="tt">W1·(W2·(W3·x))</span> collassa in <span class="tt">(W1·W2·W3)·x</span>. Senza qualcosa di non lineare in mezzo, tutti e quattro i Block si ridurrebbero algebricamente a una sola mappa lineare e la profondità non comprerebbe nulla. Nel file la linearità si rompe in cinque punti:</p>
+  <ol>
+    <li>La <strong>ReLU</strong> nell'MLP, la sorgente principale. Nei modelli moderni al suo posto c'è SwiGLU o GeLU, ma il ruolo è identico.</li>
+    <li>La <strong>softmax</strong> dell'attention, che normalizza ogni riga.</li>
+    <li><strong>Q · Kᵀ è quadratico</strong> nell'input: x compare due volte, una attraverso W<sub>Q</sub> e una attraverso W<sub>K</sub>, quindi i punteggi sono già non lineari <em>prima</em> della softmax.</li>
+    <li>Il <strong>LayerNorm</strong>, che divide per la deviazione standard del vettore stesso.</li>
+    <li>La <strong>softmax più il campionamento</strong> in uscita.</li>
+  </ol>
+  <div class="note"><b>Il terzo punto è quello che sfugge.</b> L'attention viene spesso descritta come «lineare, dati i pesi», ed è vero: fissata A = softmax(…), il passo A·V è un'operazione lineare. Ma A viene calcolata <em>a partire da x</em>: ogni input si costruisce la propria matrice di mescolamento strada facendo.</div>
+
+  <div class="card demo">
+    <h4>Demo A · LayerNorm, il calcolo vero <span class="lbl">un token, C=8 · ε = 1e-5</span></h4>
+    <p class="dim" style="margin-top:0">Un vettore-token con valori sballati entra; leggi μ e σ², il vettore normalizzato (media→0, varianza→1) e l'effetto di γ e β appresi.</p>
+    <div class="ctr"><button class="b warm" id="lnGo">↻ Nuovo vettore</button>
+      <span class="mono dim">μ = <span class="num" id="lnMu"></span> · σ² = <span class="num" id="lnVar"></span></span></div>
+    <div class="mlab">x (8) in ingresso</div><div class="matwrap"><div class="mat" id="lnIn"></div></div>
+    <div class="mlab">x̂ = (x − μ)/√(σ²+ε) <span class="faint">media 0, varianza 1</span></div><div class="matwrap"><div class="mat" id="lnNorm"></div></div>
+    <div class="ctr">
+      <label class="sld">γ <input type="range" id="lnG" min="0" max="2" step="0.05" value="1"><output id="lnGo2">1.00</output></label>
+      <label class="sld">β <input type="range" id="lnB" min="-1" max="1" step="0.05" value="0"><output id="lnBo">0.00</output></label>
+    </div>
+    <div class="mlab">out = γ·x̂ + β <span class="faint">nel modello γ e β sono 2·C parametri appresi, qui uniformi per semplicità</span></div><div class="matwrap"><div class="mat" id="lnOut"></div></div>
+  </div>
+
+  <div class="card demo">
+    <h4>Demo B · perché il residual: il segnale in profondità <span class="lbl">8 layer simulati, guadagno 0.6 per sublayer</span></h4>
+    <p class="dim" style="margin-top:0">Ogni barra è la magnitudine del segnale dopo un layer. Senza identity path il segnale si moltiplica (0.6<sup>n</sup> → svanisce); con il residual ogni layer <em>aggiunge</em> il suo contributo a un flusso che non si spegne mai. Lo stesso vale per il gradiente nel backward.</p>
+    <div class="ctr"><label class="tog"><input type="checkbox" id="rsTog" checked> residual connection attiva</label></div>
+    <div class="bars" id="rsBars" style="height:120px"></div>
+  </div>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · Block <span class="lines">righe 1421–1432</span></summary>
+<pre><code class="py">class Block(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.sa = MultiHeadAttention()   # self-attention: mix across positions
+        self.ffwd = FeedForward()        # MLP: per-position transform
+        self.ln1 = nn.LayerNorm(N_EMBD)  # normalize before attention
+        self.ln2 = nn.LayerNorm(N_EMBD)  # normalize before the MLP
+
+    def forward(self, x):
+        x = x + self.sa(self.ln1(x))     # residual around attention
+        x = x + self.ffwd(self.ln2(x))   # residual around the MLP
+        return x</code></pre></details>
+</section>
+<section class="st" id="s08b">
+  <div class="eyebrow">Stazione 08 · Il residual stream, passo per passo <span class="shape">read → transform → write (+)</span></div>
+  <h2>Segui il tensore x, una scrittura alla volta</h2>
+  <p class="lead">Lo stream è la <strong>memoria di lavoro</strong> del modello: un unico tensore <span class="shp">(B, T, C)</span> che scorre dall'inizio alla fine. Nessun layer lo sovrascrive — ognuno ne <em>legge</em> una copia normalizzata, calcola un contributo Δ della stessa shape e lo <em>riversa dentro</em> con una somma.</p>
+  <p>La stazione 08 ha spiegato <em>perché</em> il pattern <span class="tt">x = x + sublayer(LayerNorm(x))</span> funziona; qui lo si percorre <em>read → transform → write</em>, un nodo alla volta. Premi <strong>avanti</strong> e osserva chi legge, chi produce un Δ e chi lo somma alla banda.</p>
+
+  <div class="card demo">
+    <h4>Demo · segui il flusso di x <span class="lbl">9 tappe · dagli embeddings ai logits</span></h4>
+    <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; margin-top:6px">
+      <svg id="rsSvg" viewBox="0 0 440 620" role="img" aria-label="Diagramma interattivo del residual stream: embeddings, letture LayerNorm, contributi di attention e feed-forward sommati alla banda, LayerNorm finale e lm_head verso i logits" style="flex:0 0 300px; max-width:320px; width:100%; height:auto">
+        <defs>
+          <linearGradient id="rsGrad" x1="0" y1="0" x2="0" y2="620" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#7fd8e8"/><stop offset=".4" stop-color="#b3a0ff"/><stop offset=".74" stop-color="#ffb454"/><stop offset="1" stop-color="#ff7e9d"/>
+          </linearGradient>
+          <marker id="rsa" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#93a7b6"/></marker>
+        </defs>
+
+        <rect x="96" y="34" width="26" height="524" rx="13" fill="url(#rsGrad)"/>
+        <path d="M 109 40 V 552" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2.4" stroke-dasharray="2.5 15"/>
+        <text x="109" y="20" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="12.5" font-weight="700" fill="#dce8f0">x (B,T,C)</text>
+
+        <g id="rs-rep" class="node">
+          <rect x="76" y="78" width="352" height="312" rx="14" fill="none" stroke="#ffb454" stroke-width="1.5" stroke-dasharray="7 6"/>
+          <text x="418" y="99" text-anchor="end" font-family="'JetBrains Mono',monospace" font-size="12" font-weight="700" fill="#ffb454">Block ×4</text>
+          <text x="418" y="115" text-anchor="end" font-family="'JetBrains Mono',monospace" font-size="10.5" fill="#93a7b6">→ 8 scritture totali</text>
+        </g>
+
+        <g id="rs-emb" class="node">
+          <circle cx="109" cy="52" r="9" fill="#070b10" stroke="#7fd8e8" stroke-width="3"/>
+          <text x="134" y="49" font-family="'JetBrains Mono',monospace" font-size="12" font-weight="700" fill="#7fd8e8">x₀ = tok_emb + pos_emb</text>
+          <text x="134" y="64" font-family="'JetBrains Mono',monospace" font-size="10.5" fill="#93a7b6">qui nasce lo stream</text>
+        </g>
+
+        <g id="rs-ln1" class="node">
+          <path d="M 124 138 H 152" fill="none" stroke="#93a7b6" stroke-width="2" marker-end="url(#rsa)"/>
+          <rect x="156" y="120" width="76" height="36" rx="9" fill="rgba(10,15,22,.85)" stroke="#93a7b6" stroke-width="2"/>
+          <text x="194" y="143" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="13" font-weight="700" fill="#dce8f0">LN₁</text>
+          <text x="156" y="110" font-family="'JetBrains Mono',monospace" font-size="10" fill="#93a7b6">legge una copia · x resta intatto</text>
+        </g>
+
+        <g id="rs-attn" class="node">
+          <path d="M 234 138 H 262" fill="none" stroke="#b3a0ff" stroke-width="2" marker-end="url(#rsa)"/>
+          <rect x="266" y="113" width="150" height="52" rx="10" fill="rgba(10,15,22,.85)" stroke="#b3a0ff" stroke-width="2.2"/>
+          <text x="341" y="135" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="13.5" font-weight="700" fill="#b3a0ff">Attention</text>
+          <text x="341" y="153" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10.5" fill="#93a7b6">Δ₁ (B,T,C) · mix posizioni</text>
+        </g>
+
+        <g id="rs-plus1" class="node">
+          <path d="M 341 169 C 341 214, 180 198, 132 210" fill="none" stroke="#b3a0ff" stroke-width="2.4" marker-end="url(#rsa)"/>
+          <circle cx="109" cy="216" r="16" fill="#070b10" stroke="#7fd8e8" stroke-width="3.2"/>
+          <text x="109" y="223" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="18" font-weight="700" fill="#7fd8e8">+</text>
+          <text x="70" y="220" text-anchor="end" font-family="'JetBrains Mono',monospace" font-size="11" font-weight="700" fill="#7fd8e8">x += Δ₁</text>
+        </g>
+
+        <g id="rs-ffn" class="node">
+          <path d="M 124 286 H 152" fill="none" stroke="#93a7b6" stroke-width="2" marker-end="url(#rsa)"/>
+          <rect x="156" y="268" width="76" height="36" rx="9" fill="rgba(10,15,22,.85)" stroke="#93a7b6" stroke-width="2"/>
+          <text x="194" y="291" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="13" font-weight="700" fill="#dce8f0">LN₂</text>
+          <path d="M 234 286 H 262" fill="none" stroke="#8fe8b0" stroke-width="2" marker-end="url(#rsa)"/>
+          <rect x="266" y="261" width="150" height="52" rx="10" fill="rgba(10,15,22,.85)" stroke="#8fe8b0" stroke-width="2.2"/>
+          <text x="341" y="283" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="13.5" font-weight="700" fill="#8fe8b0">FeedForward</text>
+          <text x="341" y="301" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10.5" fill="#93a7b6">Δ₂ (B,T,C) · per-posizione</text>
+        </g>
+
+        <g id="rs-plus2" class="node">
+          <path d="M 341 317 C 341 362, 180 346, 132 358" fill="none" stroke="#8fe8b0" stroke-width="2.4" marker-end="url(#rsa)"/>
+          <circle cx="109" cy="364" r="16" fill="#070b10" stroke="#7fd8e8" stroke-width="3.2"/>
+          <text x="109" y="371" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="18" font-weight="700" fill="#7fd8e8">+</text>
+          <text x="70" y="368" text-anchor="end" font-family="'JetBrains Mono',monospace" font-size="11" font-weight="700" fill="#7fd8e8">x += Δ₂</text>
+        </g>
+
+        <g id="rs-lnf" class="node">
+          <rect x="76" y="420" width="66" height="30" rx="8" fill="rgba(10,15,22,.85)" stroke="#dce8f0" stroke-width="2"/>
+          <text x="109" y="440" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="12.5" font-weight="700" fill="#dce8f0">ln_f</text>
+          <text x="150" y="440" font-family="'JetBrains Mono',monospace" font-size="10" fill="#93a7b6">ultima normalizzata, su tutto lo stream</text>
+        </g>
+
+        <g id="rs-head" class="node">
+          <path d="M 124 511 H 152" fill="none" stroke="#ff7e9d" stroke-width="2.2" marker-end="url(#rsa)"/>
+          <rect x="156" y="484" width="200" height="54" rx="10" fill="rgba(10,15,22,.85)" stroke="#ff7e9d" stroke-width="2.2"/>
+          <text x="256" y="506" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="13.5" font-weight="700" fill="#ff7e9d">lm_head</text>
+          <text x="256" y="524" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="10.5" fill="#93a7b6">logits (B,T,V) · W condivisa</text>
+        </g>
+      </svg>
+
+      <div style="flex:1 1 300px; min-width:260px">
+        <div class="steps" id="rsSteps"></div>
+        <div class="stepbox" id="rsText"></div>
+        <div class="formula" id="rsEq" style="text-align:left; max-width:100%; margin:14px 0"></div>
+        <div class="ctr">
+          <button class="b" id="rsPrev">← indietro</button>
+          <button class="b warm" id="rsNext">avanti →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note"><b>La contabilità dello stream.</b> Alla fine <span class="tt">x = embeddings + Δ₁ + Δ₂ + … + Δ₈</span>: otto contributi <em>sommati</em>, mai sostituiti. È il motivo per cui l'init delle proiezioni residuali è smorzata di 1/√8 (<a href="#s09">stazione 09</a>) — la varianza di una somma cresce col numero di addendi — ed è il motivo per cui il gradiente arriva pulito fino al primo layer: nel backward la derivata «attraversa» ogni + senza ostacoli.</div>
+</section>
+
+<section class="st" id="s09">
+  <div class="eyebrow">Stazione 09 · Il modello GPT completo <span class="shape">idx (B,T) → logits (B,T,V)</span></div>
+  <h2>Assemblaggio, weight tying, inizializzazione</h2>
+  <p class="lead">La classe <span class="tt">GPT</span> monta tutto: le due tabelle di embedding, i 4 Block in <span class="tt">nn.Sequential</span>, un <span class="tt">LayerNorm</span> finale (<span class="tt">ln_f</span>) e la testa <span class="tt">lm_head: Linear(C, V)</span> che proietta ogni vettore da 128 numeri a <strong>512 logit</strong> — un punteggio per ogni token del vocabolario come "prossimo token", <em>a ogni posizione</em>.</p>
+  <p><strong>Weight tying.</strong> La tabella di embedding <span class="shp">(V, C)</span> e la matrice della testa finale <span class="shp">(V, C)</span> hanno la stessa forma e rappresentano la stessa relazione token↔vettore, in direzioni opposte («id → vettore» e «vettore → punteggio per id»). Il file le <em>lega</em>: <span class="tt">self.lm_head.weight = self.token_embedding.weight</span> — lo stesso identico tensore, riusato. Benefici: ~V·C&nbsp;=&nbsp;65 536 parametri in meno e spesso migliore generalizzazione; da quel momento aggiornare l'una aggiorna l'altra. Solo la matrice è condivisa: il <em>bias</em> di lm_head resta un parametro separato (V&nbsp;=&nbsp;512 numeri).</p>
+  <div class="note"><b>L'ordine conta (un bug silenzioso evitato).</b> Prima si inizializza <em>tutto</em> con <span class="tt">self.apply(_init_weights)</span>, <em>poi</em> si lega. Legando prima, <span class="tt">apply()</span> inizializzerebbe lo stesso tensore due volte (come Embedding e come Linear): oggi innocuo perché le due std coincidono, ma un bug latente il giorno in cui divergessero. Il commento del file lo dichiara esplicitamente (righe 1486–1490).</div>
+  <p><strong>Inizializzazione.</strong> Tutti i pesi partono <span class="tt">Normal(0, 0.02)</span> (bias a zero): piccoli, per attivazioni limitate all'avvio. Ma le proiezioni marcate <span class="tt">IS_RESIDUAL_PROJ</span> — quelle che <em>scrivono nel residual stream</em>: la proj dell'attention e la seconda Linear dell'MLP — usano una std ridotta: <span class="tt">0.02/√(2·N_LAYER)</span> = 0.02/√8 ≈ <span class="num">0.00707</span>. Il motivo: a ogni layer si sommano <em>due</em> contributi al flusso (attention + MLP), cioè 2·N_LAYER&nbsp;=&nbsp;8 somme totali; senza smorzamento la varianza del segnale crescerebbe layer dopo layer. Il fattore 1/√(2·N_LAYER) compensa esattamente quella somma cumulativa.</p>
+  <div class="diag">residual stream:  x --(+)--(+)--(+)--(+)--(+)--(+)--(+)--(+)--&gt; ...
+                       ^    ^    ^    ^    ^    ^    ^    ^
+                    ogni (+) aggiunge varianza: la std ridotta la tiene a bada</div>
+
+  <h3>Il conto esatto dei parametri: 866 048</h3>
+  <p>Contano solo i pesi appresi: le operazioni pure — softmax, ReLU, mask, dropout, media pesata, sampling — hanno 0 parametri. Per ogni Block: Q/K/V = 3·C·hs per head × H head = 3C²; proj = C²+C; MLP = (C·4C+4C) + (4C·C+C) = 8C²+5C; due LayerNorm = 4C. Totale per Block: <strong>12C² + 10C</strong>.</p>
+  <table class="t"><thead><tr><th>Componente</th><th>Formula</th><th>Valore</th></tr></thead><tbody>
+    <tr><td>token_embedding</td><td class="mono">V · C = 512 · 128</td><td class="mono">65 536</td></tr>
+    <tr><td>position_embedding</td><td class="mono">block_size · C = 64 · 128</td><td class="mono">8 192</td></tr>
+    <tr><td>1 Block</td><td class="mono">12C² + 10C = 12·16384 + 1280</td><td class="mono">197 888</td></tr>
+    <tr><td>4 Block</td><td class="mono">4 · 197 888</td><td class="mono">791 552</td></tr>
+    <tr><td>ln_f</td><td class="mono">2C</td><td class="mono">256</td></tr>
+    <tr><td>lm_head</td><td class="mono">solo bias = V (matrice condivisa)</td><td class="mono">512</td></tr>
+    <tr class="tot"><td>TOTALE</td><td class="mono">C(V + block_size) + L(12C²+10C) + 2C + V</td><td class="mono">866 048</td></tr>
+  </tbody></table>
+
+  <h3>Da dove viene quel 12C² — la stessa tabella usata per GPT-3</h3>
+  <p>«12C² per Block» è un totale compresso. Scomposto per componente diventa la tabella dei pesi standard, le <em>stesse</em> righe con cui si rende conto dei 175 miliardi di GPT-3. Cambiano i numeri, l'architettura è quella di questo file. Nelle due colonne vale <span class="tt">H · hs = C</span>: 4 × 32 = 128 qui, 96 × 128 = 12 288 là.</p>
+  <table class="t"><thead><tr><th>Componente</th><th>Formula (sole matrici)</th><th>GlassGPT</th><th>GPT-3</th></tr></thead><tbody>
+    <tr><td>Embedding</td><td class="mono">C · V</td><td class="mono">65 536</td><td class="mono">617 558 016</td></tr>
+    <tr><td>Key</td><td class="mono">hs · C · H · L</td><td class="mono">65 536</td><td class="mono">14 495 514 624</td></tr>
+    <tr><td>Query</td><td class="mono">hs · C · H · L</td><td class="mono">65 536</td><td class="mono">14 495 514 624</td></tr>
+    <tr><td>Value</td><td class="mono">hs · C · H · L</td><td class="mono">65 536</td><td class="mono">14 495 514 624</td></tr>
+    <tr><td>Output</td><td class="mono">C · hs · H · L</td><td class="mono">65 536</td><td class="mono">14 495 514 624</td></tr>
+    <tr><td>Up-projection</td><td class="mono">n_hidden · C · L</td><td class="mono">262 144</td><td class="mono">57 982 058 496</td></tr>
+    <tr><td>Down-projection</td><td class="mono">C · n_hidden · L</td><td class="mono">262 144</td><td class="mono">57 982 058 496</td></tr>
+    <tr><td>Unembedding</td><td class="mono">V · C</td><td class="mono">0 (condivisa)</td><td class="mono">617 558 016</td></tr>
+    <tr class="tot"><td>solo matrici</td><td class="mono"></td><td class="mono">851 968</td><td class="mono">175 181 291 520</td></tr>
+  </tbody></table>
+  <p>Le quattro righe dell'attention, divise per L e per C², danno esattamente 1 ciascuna: <span class="tt">hs · H = C</span>, quindi ognuna vale C² per layer. Le due righe dell'MLP ne valgono 4 ciascuna. Da qui il totale:</p>
+  <div class="formula">K + Q + V + Output <span class="op">=</span> 4C² <span class="dim">per layer</span> &nbsp;·&nbsp; Up + Down <span class="op">=</span> 8C² <span class="dim">per layer</span> <span class="op">→</span> <b>12C²</b></div>
+  <p>Il <span class="tt">10C</span> residuo è tutto ciò che la tabella lascia fuori — bias e LayerNorm, trascurabili su larga scala ma reali qui: <span class="tt">bias di Output (C) + bias Up (4C) + bias Down (C) + ln1 (2C) + ln2 (2C)</span>. Entrambe le colonne omettono le stesse voci minori, compresa la tabella delle posizioni: anche GPT-3 ne ha una, appresa e assoluta come questa, da 2048 · 12 288 = 25,2 milioni, che si arrotonda via contro 175 miliardi ma qui pesa l'1%.</p>
+  <div class="note"><b>Che cosa si legge nella colonna GPT-3.</b> L'MLP tiene il 66% dei pesi, 115,9 miliardi su 175,2: la capacità di un Transformer sta in gran parte nei suoi MLP, mentre l'attention si occupa del mescolamento fra posizioni. Embedding più unembedding valgono invece lo 0,7% della cifra dei 175 miliardi, che li conta come due matrici separate; questo file le lega — da cui lo 0 nella riga Unembedding — e anche condivise restano il 7,6% del suo totale, che salirebbe al 14% slegandole. Il vocabolario domina il bilancio di un modello piccolo e si arrotonda via in uno grande, quindi il weight tying qui rende e su larga scala quasi non si nota.</div>
+
+  <div class="card demo">
+    <h4>Demo A · calcolatore di parametri <span class="lbl">la formula del file, dal vivo</span></h4>
+    <p class="dim" style="margin-top:0">Cambia gli iperparametri e guarda dove finiscono i parametri. Il vincolo <span class="tt">C % H == 0</span> è lo stesso <span class="tt">assert</span> del file.</p>
+    <div class="ctr">
+      <label class="sld">C <input type="number" id="pcC" value="128" min="8" step="8"></label>
+      <label class="sld">H <input type="number" id="pcH" value="4" min="1"></label>
+      <label class="sld">L <input type="number" id="pcL" value="4" min="1"></label>
+      <label class="sld">T <input type="number" id="pcT" value="64" min="8"></label>
+      <label class="sld">V <input type="number" id="pcV" value="512" min="256"></label>
+      <button class="b" id="pcGlass">preset GlassGPT</button>
+      <button class="b" id="pcBig">preset GPT-2 small</button>
+    </div>
+    <div class="stepbox mono" id="pcOut"></div>
+  </div>
+
+  <div class="card demo">
+    <h4>Demo B · le due inizializzazioni <span class="lbl">10 000 campioni gaussiani reali</span></h4>
+    <p class="dim" style="margin-top:0">Istogramma dei pesi all'avvio: la init standard (σ = 0.02, in <span style="color:var(--aqua)">aqua</span>) contro quella <em>scalata</em> delle proiezioni residuali (σ = 0.02/√8 ≈ 0.00707, in <span style="color:var(--amber)">ambra</span>): stessa campana, ampiezza ~2.8 volte minore.</p>
+    <canvas id="initCv" width="820" height="190"></canvas>
+  </div>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · GPT.__init__ + _init_weights <span class="lines">righe 1460–1520 (estratto)</span></summary>
+<pre><code class="py">def __init__(self):
+    super().__init__()
+    self.token_embedding = nn.Embedding(VOCAB_SIZE, N_EMBD)      # (V, C)
+    self.position_embedding = nn.Embedding(BLOCK_SIZE, N_EMBD)   # (T, C)
+    self.blocks = nn.Sequential(*[Block() for _ in range(N_LAYER)])
+    self.ln_f = nn.LayerNorm(N_EMBD)
+    self.lm_head = nn.Linear(N_EMBD, VOCAB_SIZE)                 # C -&gt; V
+
+    # WEIGHT TYING: the same tensor is reused for both.
+    # ORDER MATTERS: initialize ALL weights first, then tie.
+    self.apply(self._init_weights)                    # 1) initialize everything
+    self.lm_head.weight = self.token_embedding.weight # 2) then tie
+
+def _init_weights(self, module):
+    if isinstance(module, nn.Linear):
+        std = INIT_STD
+        if getattr(module, "IS_RESIDUAL_PROJ", False):
+            std = INIT_STD / math.sqrt(2 * N_LAYER)   # scaled residual init
+        nn.init.normal_(module.weight, mean=0.0, std=std)
+        if module.bias is not None:
+            nn.init.zeros_(module.bias)
+    elif isinstance(module, nn.Embedding):
+        nn.init.normal_(module.weight, mean=0.0, std=INIT_STD)</code></pre></details>
+</section>
+
+<section class="st" id="s10">
+  <div class="eyebrow">Stazione 10 · Loss: cross-entropy <span class="shape">logits (B·T, V) + targets (B·T) → scalare</span></div>
+  <h2>Quanto sbaglia il modello, in un numero</h2>
+  <p class="lead">I logit sono punteggi grezzi: più alto il logit, più alta la probabilità che il modello assegna a quel token come "prossimo". La <strong>cross-entropy</strong> è bassa quando il modello dà probabilità alta al token <em>giusto</em> (quello in <span class="tt">targets</span>), alta quando sbaglia — ed è la quantità che il training minimizza.</p>
+  <div class="formula">p <span class="op">=</span> softmax(logits) <span class="op">;</span>  loss <span class="op">=</span> −log p[target]</div>
+  <p><span class="tt">F.cross_entropy</span> vuole logits <span class="shp">(N, V)</span> e target <span class="shp">(N,)</span>, quindi il forward appiattisce insieme le dimensioni B e T: <span class="tt">logits.view(B·T, V)</span>, <span class="tt">targets.view(B·T)</span> — con B=32 e T=64 sono <strong>2 048 predizioni</strong> valutate per batch, e la loss è la loro media. Un check di sanità prezioso: a pesi casuali il modello predice ~uniforme su V token, e la cross-entropy dell'uniforme su N opzioni è esattamente <span class="tt">ln(N)</span>. Con V&nbsp;=&nbsp;512: <span class="num">ln(512) ≈ 6.2383</span>. Se la loss parte lì vicino, l'inizializzazione è corretta.</p>
+
+  <div class="card demo">
+    <h4>Demo · il playground della loss <span class="lbl">8 logit, softmax e −log p reali</span></h4>
+    <p class="dim" style="margin-top:0">Muovi i logit, scegli il target (clicca una barra): la softmax si aggiorna e la loss con lei. Prova «uniforme»: la loss vale esattamente ln(8) ≈ 2.0794 — l'analogo in piccolo del 6.2383 di partenza del modello.</p>
+    <div class="ctr">
+      <button class="b" id="ceUnif">uniforme</button>
+      <button class="b" id="cePerf">quasi perfetto</button>
+      <button class="b" id="ceRand">↻ casuale</button>
+      <span class="mono">loss = <span class="num" id="ceLoss" style="font-size:17px"></span></span>
+    </div>
+    <div class="bars" id="ceBars"></div>
+    <div id="ceSliders" class="ctr" style="gap:6px 14px"></div>
+  </div>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · la loss nel forward <span class="lines">righe 1522–1558</span></summary>
+<pre><code class="py">if targets is None:
+    # Generation mode: no targets, no loss to compute.
+    return logits, None
+
+# LOSS = cross-entropy between logits and targets. F.cross_entropy expects
+# logits (N, V) and targets (N,), so the B and T dims are flattened: N = B*T.
+#
+#    logits[i] = [ 0.1, 3.2, -1.0, ... ] -&gt; softmax -&gt; probabilities
+#    target[i] =         ^ (the right token is id 1)
+#    loss is high if the prob on the right token is low; low if it is high.
+Bc, Tc, Vc = logits.shape
+logits = logits.view(Bc * Tc, Vc)   # (B*T, V)
+targets = targets.view(Bc * Tc)     # (B*T,)
+loss = F.cross_entropy(logits, targets)
+return logits, loss</code></pre></details>
+</section>
+
+<section class="st" id="s11">
+  <div class="eyebrow">Stazione 11 · Training loop <span class="shape">2000 × (forward → backward → update)</span></div>
+  <h2>Quattro righe che fanno imparare 866 048 pesi</h2>
+  <p class="lead">Il ciclo di <span class="tt">train_model</span> ripete <span class="tt">MAX_ITERS = 2000</span> volte la stessa danza: pesca un batch, misura l'errore, calcola come muovere ogni peso, muovilo. Tutto il resto del file esiste per rendere possibili queste quattro righe.</p>
+  <div class="diag">get_batch("train")            1) pesca x, y (B,T)
+      |
+      v
+FORWARD:  model(x, y) ------&gt;  2) loss   (l'errore di predizione)
+      |                          |
+      |                    zero_grad()   (azzera i vecchi gradienti!)
+      |                          |
+      |                    3) BACKWARD: loss.backward()  d(loss)/d(peso)
+      |                          |
+      |                    4) UPDATE: optimizer.step()   aggiorna i pesi
+      +--------------------------+        ripeti MAX_ITERS volte</div>
+  <p><strong>Backward.</strong> <span class="tt">loss.backward()</span> è l'autograd di PyTorch: per <em>ognuno</em> dei ~866 048 pesi calcola la derivata della loss rispetto a quel peso — quanto e in che verso muoverlo per ridurre l'errore. <strong>Zero_grad prima:</strong> PyTorch <em>accumula</em> i gradienti, quindi senza <span class="tt">optimizer.zero_grad(set_to_none=True)</span> ogni step sommerebbe i gradienti dello step precedente ai propri. <strong>Update.</strong> <span class="tt">AdamW</span> adatta il passo <em>per ciascun parametro</em> usando medie mobili del gradiente e del suo quadrato — l'ottimizzatore standard per i Transformer, qui con <span class="tt">lr = 3e-4</span>.</p>
+  <div class="formula" style="max-width:680px"><span class="op">AdamW · per ogni peso (g = gradiente)</span><br>m ← β₁·m + (1−β₁)·g <span class="op">·</span> v ← β₂·v + (1−β₂)·g² <span class="op">·</span> θ ← θ − lr·( m̂ /(√v̂+ε) + λ·θ )</div>
+  <p><strong>m</strong> è la media mobile del gradiente (il <em>momento</em>), <strong>v</strong> quella del suo quadrato: insieme danno a ogni parametro un passo su misura — ampio dove il gradiente è coerente, ridotto dove è rumoroso (m̂ e v̂ sono le versioni corrette dal bias dei primi step). Il termine <span class="tt">λ·θ</span> è il <em>decoupled weight decay</em>, la «W» di AdamW: spinge i pesi verso valori piccoli, cioè funzioni più semplici e meno overfitting.</p>
+  <p><strong>Misurare senza barare.</strong> Ogni 300 step, <span class="tt">estimate_loss</span> media la loss su 100 batch (una misura sola è troppo rumorosa) sia su train sia su validation, con <span class="tt">model.eval()</span> per spegnere il dropout durante la misura e <span class="tt">model.train()</span> per riaccenderlo dopo, il tutto sotto <span class="tt">@torch.no_grad()</span>. Due curve, una diagnosi:</p>
+  <div class="diag">train v                              train v
+      |\                                   |\
+      | \____  scendono INSIEME            | \___          train scende...
+val   |  ----  → sta imparando       val   |   __/         ...ma val RISALE
+      +---------------→ iter               +---------------→ iter
+        (generalizza)                        <b>OVERFITTING</b>: memorizza</div>
+  <div class="note"><b>Nota onesta del file:</b> col testo di fallback (21 terzine ripetute ×40) la rete può in gran parte <em>memorizzare</em> il blocco: la val loss scende molto ma non a zero. Con testo davvero grande e vario, la val loss si assesta più in alto: è l'aspetto che ha una generalizzazione vera.</div>
+
+  <div class="card demo">
+    <h4>Demo · la corsa della loss <span class="lbl">simulazione · partenza a ln(512) ≈ 6.2383 · log come lo script</span></h4>
+    <p class="dim" style="margin-top:0">Premi ▶: il ciclo dei 4 passi pulsa, le curve scendono dalla loss teorica iniziale e la console stampa ogni 300 step come il vero <span class="tt">glassgpt.py</span>. Attiva l'overfitting per vedere la validation ribellarsi.</p>
+    <div class="ctr">
+      <button class="b warm" id="trPlay">▶ Allena</button>
+      <button class="b" id="trReset">Reset</button>
+      <label class="tog"><input type="checkbox" id="trOver"> forza overfitting</label>
+      <span class="mono dim">step <span class="num" id="trStep">0</span> / 2000</span>
+    </div>
+    <div class="ctr" id="trCycle" style="gap:8px">
+      <span class="fnode" data-c="0">1 · get_batch</span><span class="mono faint">→</span>
+      <span class="fnode" data-c="1">2 · forward → loss</span><span class="mono faint">→</span>
+      <span class="fnode" data-c="2">3 · backward</span><span class="mono faint">→</span>
+      <span class="fnode" data-c="3">4 · step()</span>
+    </div>
+    <canvas id="trCv" width="820" height="230"></canvas>
+    <div class="legend"><span><i style="background:var(--aqua)"></i>train loss</span><span><i style="background:var(--amber)"></i>val loss</span><span><i style="background:rgba(255,126,157,.8)"></i>ln(512) = 6.2383</span></div>
+    <div class="console" id="trLog"></div>
+  </div>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · train_model + estimate_loss <span class="lines">righe 1659–1739 (estratto)</span></summary>
+<pre><code class="py">@torch.no_grad()
+def estimate_loss(model):
+    out = {}
+    model.eval()                       # dropout OFF while measuring
+    for split in ("train", "val"):
+        losses = torch.zeros(EVAL_ITERS)
+        for k in range(EVAL_ITERS):
+            X, Y = get_batch(split)
+            _, loss = model(X, Y)
+            losses[k] = loss.item()
+        out[split] = losses.mean().item()
+    model.train()                      # dropout back ON
+    return out
+
+def train_model(model):
+    n_params = sum(p.numel() for p in model.parameters())
+    print(f"[model] Trainable parameters: {n_params:,}")
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+
+    for it in range(MAX_ITERS):
+        if it % EVAL_INTERVAL == 0 or it == MAX_ITERS - 1:
+            losses = estimate_loss(model)
+            print(f"  step {it:5d} | train loss {losses['train']:.4f} "
+                  f"| val loss {losses['val']:.4f}")
+
+        # --- The 4 training steps ---
+        xb, yb = get_batch("train")            # 1) fetch a batch
+        _, loss = model(xb, yb)                # 2) FORWARD: compute the loss
+        optimizer.zero_grad(set_to_none=True)  #    clear the old gradients
+        loss.backward()                        # 3) BACKWARD: d(loss)/d(weight)
+        optimizer.step()                       # 4) UPDATE: update the weights</code></pre></details>
+</section>
+
+<section class="st" id="s12">
+  <div class="eyebrow">Stazione 12 · Generation: sampling <span class="shape">temperature → top-k → softmax → multinomial</span></div>
+  <h2>Un token alla volta, in autoregressione</h2>
+  <p class="lead">Generare = ripetere il forward in un loop <strong>autoregressivo</strong>: ogni token campionato viene <em>appeso al contesto</em> e ridato in pasto al modello per predire il successivo. <span class="tt">@torch.no_grad()</span> spegne l'autograd: in generation i gradienti non servono.</p>
+  <div class="diag">contesto idx (B, t)
+   |  ritaglia agli ultimi BLOCK_SIZE token      idx[:, -BLOCK_SIZE:]
+   v
+forward → logits, prendi SOLO l'ultima posizione        (B, V)
+   |  / temperature        (scala i logit)
+   |  top-k                (tieni i K più probabili, resto → -inf)
+   |  softmax              (→ probabilità)
+   |  multinomial          (campiona 1 token: NON sempre il massimo)
+   v
+idx_next (B,1)  ──►  append: idx = [idx, idx_next]     (B, t+1)
+   |                                   |
+   +───────────────────────────────────+   ripeti MAX_NEW_TOKENS volte</div>
+  <p><strong>Temperature</strong> divide i logit prima della softmax: τ&nbsp;&lt;&nbsp;1 <em>affila</em> la distribuzione concentrando la probabilità sui token più probabili (output più ripetitivo); τ&nbsp;=&nbsp;1 la lascia intatta; τ&nbsp;&gt;&nbsp;1 la <em>appiattisce</em> (output più vario, più code campionate). Una guardia <span class="tt">max(temperature, 1e-6)</span> evita la divisione per zero. <strong>Top-k</strong> trova il K-esimo logit più alto con <span class="tt">torch.topk(...).values[:, [-1]]</span> e manda a −∞ tutto ciò che sta sotto: dopo la softmax quei token hanno probabilità esattamente 0 — via la coda di token improbabili ma non impossibili. Infine <span class="tt">torch.multinomial</span> <strong>campiona</strong> dalla distribuzione invece di prendere l'argmax: è questa casualità controllata a dare varietà al testo. I default del file: τ&nbsp;=&nbsp;0.8, K&nbsp;=&nbsp;50, 500 token generati.</p>
+
+  <div class="card demo">
+    <h4>Demo · sala di generazione <span class="lbl">mini-LM reale in JS: BPE vero + trigram sui token di Dante</span></h4>
+    <p class="dim" style="margin-top:0">Un vero loop <span class="tt">generate()</span>: al posto del Transformer c'è un modello trigram costruito sui token BPE di Dante (tokenizer a 96 merge) (logit = log delle frequenze), ma <strong>temperature, top-k, softmax e multinomial sono esattamente quelli del file</strong>. Le barre mostrano la distribuzione del prossimo token ad ogni passo: il <span style="color:var(--amber)">vincitore</span> viene appeso, i token <span class="faint">tagliati dal top-k</span> sono spenti.</p>
+    <div class="ctr">
+      <select id="gnPrompt">
+        <option value="Nel mezzo del ">prompt: «Nel mezzo del »</option>
+        <option value="che nel ">prompt: «che nel »</option>
+        <option value="la paura ">prompt: «la paura »</option>
+        <option value="mi ritrovai ">prompt: «mi ritrovai »</option>
+      </select>
+      <button class="b warm" id="gnStep">＋1 token</button>
+      <button class="b" id="gnPlay">▶ Genera</button>
+      <button class="b" id="gnReset">Reset</button>
+    </div>
+    <div class="ctr">
+      <label class="sld">temperature <input type="range" id="gnT" min="0.1" max="2" step="0.05" value="0.8"><output id="gnTo">0.80</output></label>
+      <label class="sld">top-k <input type="range" id="gnK" min="1" max="20" value="8"><output id="gnKo">8</output></label>
+    </div>
+    <div class="mlab">Distribuzione del prossimo token <span class="faint">(logits/τ → top-k → softmax)</span></div>
+    <div class="bars" id="gnBars" style="height:130px"></div>
+    <div class="mlab">Testo generato <span class="faint">(prompt + continuazione, decode in tempo reale)</span></div>
+    <div class="console" id="gnOut" style="max-height:120px; font-size:14px; color:#dbe8f0"></div>
+  </div>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · GPT.generate <span class="lines">righe 1561–1625</span></summary>
+<pre><code class="py">@torch.no_grad()  # generation needs no gradients -&gt; faster/lighter
+def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
+    temperature = max(temperature, 1e-6)     # avoid division by zero
+    for _ in range(max_new_tokens):
+        # The model attends to at most BLOCK_SIZE tokens: crop the context.
+        idx_cond = idx[:, -BLOCK_SIZE:]      # (B, &lt;=T)
+        logits, _ = self(idx_cond)           # (B, T, V)
+        # Only the LAST position matters; divide by the temperature.
+        logits = logits[:, -1, :] / temperature          # (B, V)
+        # top-k: keep only the K highest logits; the rest -&gt; -infinity.
+        if top_k is not None:
+            k = min(top_k, logits.size(-1))
+            threshold = torch.topk(logits, k).values[:, [-1]]   # (B, 1)
+            logits = logits.masked_fill(logits &lt; threshold, float("-inf"))
+        probs = F.softmax(logits, dim=-1)                # (B, V)
+        # Sample from the distribution instead of taking the argmax.
+        idx_next = torch.multinomial(probs, num_samples=1)      # (B, 1)
+        idx = torch.cat((idx, idx_next), dim=1)          # (B, T+1)
+    return idx</code></pre></details>
+</section>
+
+<section class="st" id="s12b">
+  <div class="eyebrow">Stazione 12 · Inferenza: prefill e decode <span class="shape">lo stesso grafo, due forme diverse</span></div>
+  <h2>Perché generare costa in modo così diverso da addestrare</h2>
+  <p class="lead">L'addestramento fa un forward per batch. La generazione ne fa uno <strong>per token</strong>, e quei forward hanno due forme. Il primo legge tutto il prompt in una volta; ognuno dei successivi legge un token solo, quello appena prodotto. I sistemi di serving chiamano le due fasi <strong>prefill</strong> e <strong>decode</strong>: stesso codice, colli di bottiglia opposti. GlassGPT implementa la versione semplice; la separazione spiega quasi tutto di come si comportano gli LLM in produzione.</p>
+  <p>Con un prompt da 1000 token e 200 token generati, lo stesso identico grafo di calcolo viene eseguito 201 volte:</p>
+  <div class="diag"><b>PREFILL</b>   1 forward, 1000 token in un colpo solo, una volta sola
+            |###################################|        → <b>TTFT</b>
+            (time to first token: l'attesa prima che compaia del testo)
+
+<b>DECODE</b>    200 forward, 1 token ciascuno, rigorosamente in fila
+            |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#| …      → <b>TPOT</b>
+            il token n è l'input del token n+1: non si parallelizza
+            (time per output token: la velocità con cui scorre il testo)</div>
+
+  <div class="grid2">
+    <div>
+      <div class="mlab">PREFILL <span class="faint">— matrice × matrice (GEMM), limitato dal calcolo</span></div>
+      <div class="specs">
+        <span class="spec">X <b>[1000 × C]</b> tutte le posizioni insieme</span>
+        <span class="spec">A <b>[1000 × 1000]</b> O(n²), metà mascherata</span>
+        <span class="spec">KV cache <b>1000 righe scritte</b></span>
+        <span class="spec">logits <b>serve solo l'ultima riga</b></span>
+      </div>
+      <p class="dim">Le altre 999 righe di logits vengono buttate: quel forward serviva a <em>riempire la cache</em>, non a predire. La GPU lavora vicino al picco di FLOPs, quindi aggiungere richieste al batch non porta nulla — è già satura.</p>
+    </div>
+    <div>
+      <div class="mlab">DECODE <span class="faint">— vettore × matrice (GEMV), limitato dalla memoria</span></div>
+      <div class="specs">
+        <span class="spec">x <b>[1 × C]</b> un solo token</span>
+        <span class="spec">A <b>[1 × 1000]</b> O(n), una riga sola</span>
+        <span class="spec">KV cache <b>letta tutta, +1 riga</b></span>
+        <span class="spec">logits <b>usati per intero</b></span>
+      </div>
+      <p class="dim">L'aritmetica è minuscola, ma per produrre quel token servono comunque <em>tutti</em> i pesi letti dalla memoria: 140 GB per un modello grande. La GPU resta quasi ferma ad aspettare. Qui il batching paga moltissimo — la stessa lettura dei pesi serve 32 richieste insieme.</p>
+    </div>
+  </div>
+
+  <h3>Decodifica speculativa: spendere il calcolo che avanza</h3>
+  <p>Il decode spreca quasi tutta la capacità aritmetica: i pesi vanno letti per intero per produrre un token solo, e mentre vengono letti le unità di calcolo non hanno niente da fare. L'asimmetria che ne segue è tutta l'idea: <strong>verificare 4 token costa quasi quanto generarne 1</strong>, perché in un caso e nell'altro i pesi si caricano una volta.</p>
+  <p>Un secondo modello, molto più piccolo — il <strong>draft</strong> — tira a indovinare in avanti, e il modello vero — il <strong>target</strong> — controlla le proposte in un passaggio unico:</p>
+  <div class="diag">draft  (piccolo, veloce)   propone 4 token:  " and" / " then" / " he" / " ran"
+                              |
+target (il modello vero)   UN forward su tutti e 4 insieme
+                           (forma da prefill: GEMM, non GEMV)
+                              |
+                           confronta ogni proposta con quello che
+                           avrebbe prodotto da solo
+                              |
+accettati: " and then he" &lt;---+  i primi tre combaciano, il quarto no:
+                                 viene scartato e sostituito dal token
+                                 del target
+                              |
+risultato: 4 token emessi al costo di circa 1 forward del target</div>
+  <div class="note"><b>Non è un'approssimazione.</b> Con la regola di accettazione giusta — un passo di rejection sampling che corregge la differenza fra le due distribuzioni — il testo prodotto è campionato <em>esattamente</em> dalla distribuzione che avrebbe prodotto il target da solo. Il draft cambia soltanto la velocità con cui i token arrivano: se è scadente viene respinto più spesso e il guadagno scende verso 1×. Ogni passo emette almeno un token, quello del target, quindi si avanza anche quando tutte le proposte sbagliano. I guadagni tipici stanno fra 2× e 3×, governati dal tasso di accettazione — cioè da quanto spesso un modello economico si trova d'accordo con uno costoso. Capita spesso, perché buona parte di qualsiasi testo è facile: spazi, parole di servizio, la seconda metà di una parola già cominciata.</div>
+  <p>Le varianti cambiano soprattutto da dove arriva il draft: un modello piccolo della stessa famiglia, una ricerca n-gram nel prompt (nessun modello, si propone testo copiato dal contesto — funziona bene su riassunti e modifiche di codice), oppure teste di predizione aggiuntive innestate sul target stesso, come in Medusa ed EAGLE, che evitano di servire due modelli.</p>
+
+  <h3>Che cosa fa invece questo file</h3>
+  <p><span class="tt">GPT.generate</span> non ha KV cache: a ogni passo rifà il forward completo su tutto il contesto, quindi K e V dei token precedenti vengono ricalcolati da zero ogni volta. Corretto, molto più leggibile — e O(T) volte il lavoro necessario. Ogni passo è, di fatto, un piccolo prefill: la forma che un servizio reale paga una volta sola.</p>
+  <div class="note"><b>Perché aggiungere la cache non sarebbe solo una questione di velocità.</b> Questo modello usa <strong>posizioni assolute apprese</strong>, sommate una volta all'ingresso. Quando il contesto supera <span class="tt">BLOCK_SIZE</span> la finestra scorre, l'indice di posizione di ogni token cambia, e i K/V in cache — che hanno le vecchie posizioni già cotte dentro — diventano sbagliati: la cache andrebbe ricostruita. RoPE non ha questo problema, perché applica la posizione ruotando Q e K dentro ogni attention, in base alla distanza <em>relativa</em>. È buona parte del motivo per cui i modelli moderni ci sono passati.</div>
+  <div class="note"><b>Sulla scala.</b> Il discorso sui colli di bottiglia riguarda GPU che spostano decine di gigabyte di pesi. GlassGPT ha 866 048 parametri e gira su CPU: niente di tutto ciò è osservabile qui. È documentato perché l'architettura è la stessa.</div>
+</section>
+
+<section class="st" id="s13">
+  <div class="eyebrow">Stazione 13 · Checkpoint &amp; main() <span class="shape">model.pt = weights + tokenizer + config</span></div>
+  <h2>Salvare tutto ciò che serve, e niente di meno</h2>
+  <p class="lead"><span class="tt">save_checkpoint</span> scrive in <span class="tt">model.pt</span> tre cose, tutte indispensabili: i <strong>pesi</strong> (<span class="tt">state_dict</span>: i valori appresi), il <strong>tokenizer BPE</strong> (merges + vocab: senza di esso gli id non tornano testo — i merge appresi <em>fanno parte del modello</em>) e la <strong>config</strong> architetturale (per ricostruire la stessa identica forma di rete). Mancasse una sola delle tre, il modello salvato sarebbe inutilizzabile.</p>
+  <div class="diag">model.pt = [ <b>weights</b> ] + [ <u>merges + vocab</u> ] + [ <i>config</i> ]
+              i valori       la mappa testo↔id     la forma della rete</div>
+  <p><strong>Il checkpoint è self-describing — e vince lui.</strong> <span class="tt">load_checkpoint</span> ripristina l'esatto tokenizer di addestramento e applica <em>la config salvata</em> alle variabili globali: se gli iperparametri nel file sono cambiati ma esiste già un <span class="tt">model.pt</span>, le modifiche vengono ignorate (la forma salvata deve combaciare con i pesi salvati) e un warning esplicito lo segnala, campo per campo — per applicarli serve <span class="tt">FORCE_RETRAIN = True</span>. Se il caricamento fallisce (es. checkpoint corrotto), un backup ripristina lo stato precedente delle globali, così il retrain successivo resta coerente. <span class="tt">main()</span> orchestra i due cammini e in entrambi i casi chiude con <span class="tt">generate_text</span> (prompt vuoto → si parte da un newline come contesto minimo).</p>
+
+  <div class="card demo">
+    <h4>Demo · l'albero di decisione di main() <span class="lbl">gli stessi rami del file</span></h4>
+    <p class="dim" style="margin-top:0">Gioca con le tre condizioni e guarda quale cammino si accende — inclusa la replica del warning «il checkpoint vince».</p>
+    <div class="ctr">
+      <label class="tog"><input type="checkbox" id="ckExists" checked> model.pt esiste</label>
+      <label class="tog"><input type="checkbox" id="ckForce"> FORCE_RETRAIN = True</label>
+      <label class="tog"><input type="checkbox" id="ckDiff"> iperparametri modificati nel file</label>
+    </div>
+    <div class="flow" id="ckFlow">
+      <div class="fnode q" id="ckQ">model.pt esiste and not FORCE_RETRAIN ?</div>
+      <div class="fsplit">
+        <div class="fcol"><div class="fedge" id="ckEy"><span>sì</span></div><div class="fnode" id="ckLoad">load_checkpoint()<br><small>pesi + tokenizer + config salvata</small></div></div>
+        <div class="fcol"><div class="fedge" id="ckEn"><span>no</span></div><div class="fnode" id="ckTrain">prepare_data → GPT() → train_model → save_checkpoint</div></div>
+      </div>
+      <div class="fedge" id="ckEg"></div>
+      <div class="fnode" id="ckGen">generate_text(model)</div>
+    </div>
+    <div class="console" id="ckLog" style="margin-top:14px"></div>
+  </div>
+
+  <details class="src"><summary><span class="file">glassgpt.py</span> · save_checkpoint + main <span class="lines">righe 1746–1772 · 1869–1900 (estratto)</span></summary>
+<pre><code class="py">def save_checkpoint(model, path):
+    torch.save({
+        "model_state": model.state_dict(),
+        "tokenizer": {"merges": tokenizer.merges, "vocab": tokenizer.vocab},
+        "config": {
+            "block_size": BLOCK_SIZE, "n_embd": N_EMBD,
+            "n_head": N_HEAD, "n_layer": N_LAYER, "vocab_size": VOCAB_SIZE,
+        },
+    }, path)
+
+def main():
+    # LOADING path: if model.pt exists and FORCE_RETRAIN is False, reload
+    # weights and tokenizer from the checkpoint and skip training.
+    model = None
+    if os.path.exists(CHECKPOINT_PATH) and not FORCE_RETRAIN:
+        model = load_checkpoint(CHECKPOINT_PATH)
+    # TRAINING path: otherwise prepare the data (training the BPE),
+    # build the network, train, and save.
+    if model is None:
+        prepare_data()
+        model = GPT().to(DEVICE)
+        train_model(model)
+        save_checkpoint(model, CHECKPOINT_PATH)
+    # In both cases, generate with PROMPT + sampling parameters.
+    generate_text(model)
+
+if __name__ == "__main__":
+    main()</code></pre></details>
+</section>
+
+<section class="st" id="s13b">
+  <div class="eyebrow">Stazione 13 · Modelli moderni <span class="shape">cosa cambia, e cosa resta identico</span></div>
+  <h2>Che cosa sostituisce un modello di produzione</h2>
+  <p class="lead">Lo scheletro di questo file è ancora quello in uso: embedding, N blocchi di attention più MLP con residui e pre-norm, proiezione sul vocabolario, campionamento. Le differenze sono sostituzioni di componenti dentro quello stesso disegno.</p>
+  <table class="t"><thead><tr><th>Questo file</th><th>Modelli moderni</th><th>Perché</th></tr></thead><tbody>
+    <tr><td>LayerNorm</td><td>RMSNorm</td><td>Stesso compito senza sottrarre la media e senza bias: più economico, altrettanto stabile.</td></tr>
+    <tr><td>Posizioni assolute apprese</td><td>RoPE</td><td>Codifica la distanza <em>relativa</em> ruotando Q e K dentro ogni attention, invece di sommare un vettore all'ingresso.</td></tr>
+    <tr><td>ReLU</td><td>SwiGLU</td><td>Attivazione con gate: loss migliore a parità di parametri.</td></tr>
+    <tr><td>K/V indipendenti per head</td><td>GQA / MQA</td><td>K e V condivisi fra gruppi di head: riduce la KV cache, che è ciò che limita la dimensione del batch.</td></tr>
+    <tr><td>Nessuna cache</td><td>KV cache</td><td>Vedi la stazione precedente.</td></tr>
+    <tr><td>—</td><td>Flash Attention</td><td>Non materializza mai la matrice T × T in memoria: stessa matematica, molta meno RAM.</td></tr>
+    <tr><td>Residui pre-norm</td><td>Residui pre-norm</td><td>Invariato.</td></tr>
+    <tr><td>Attention con softmax</td><td>Attention con softmax</td><td>Invariato.</td></tr>
+    <tr><td>Cross-entropy sul token successivo</td><td>Cross-entropy sul token successivo</td><td>Invariato a ogni scala: l'obiettivo resta lo stesso.</td></tr>
+  </tbody></table>
+</section>
+
+<section class="st" id="s14">
+  <div class="eyebrow">Stazione 14 · Glossario <span class="shape">ogni termine del file, una riga ciascuno</span></div>
+  <h2>Il glossario completo, cercabile</h2>
+  <p class="lead">La stessa sezione «GLOSSARY» dell'header del file (righe 464–597), riordinata per categoria. Filtra per parola o per gruppo.</p>
+  <div class="ctr"><input type="text" id="glQ" placeholder="cerca… (es. softmax)" style="flex:1;min-width:200px"></div>
+  <div class="chips" id="glChips"></div>
+  <div id="gl-grid"></div>
+</section>
+
+<footer>
+  <span>Basato su <a href="https://github.com/AlessandroCapelli/GlassGPT" target="_blank" rel="noopener">github.com/AlessandroCapelli/GlassGPT</a> · MIT</span>
+  <span>Pagina didattica: prose in italiano, termini tecnici in inglese</span>
+  <span>Demo a numeri veri · nessuna libreria esterna</span>
+</footer>
+</main>
+<script>
+'use strict';
+
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function gaussFactory(seed){const r=mulberry32(seed);let spare=null;return function(){if(spare!==null){const v=spare;spare=null;return v}let u=0,v=0,s=0;do{u=r()*2-1;v=r()*2-1;s=u*u+v*v}while(s>=1||s===0);const m=Math.sqrt(-2*Math.log(s)/s);spare=v*m;return u*m}}
+function seededVec(seed,n,std){const g=gaussFactory(seed);return Array.from({length:n},()=>g()*std)}
+function seededMat(seed,r,c,std){const g=gaussFactory(seed);return Array.from({length:r},()=>Array.from({length:c},()=>g()*std))}
+
+const dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0);
+const matmul=(A,B)=>A.map(row=>B[0].map((_,j)=>row.reduce((s,v,k)=>s+v*B[k][j],0)));
+const transpose=M=>M[0].map((_,j)=>M.map(r=>r[j]));
+function softmax(v){const m=Math.max(...v.filter(x=>isFinite(x)));const e=v.map(x=>isFinite(x)?Math.exp(x-m):0);const s=e.reduce((a,b)=>a+b,0);return e.map(x=>x/s)}
+const fmt=(v,d=2)=>((v<0?'−':'')+Math.abs(v).toFixed(d));
+const fmtInt=n=>n.toLocaleString('it-IT');
+
+function heatColor(v,absmax){
+  if(!isFinite(v))return null;
+  const a=clamp(Math.abs(v)/(absmax||1),0,1)*0.8;
+  return v>=0?`rgba(255,180,84,${a})`:`rgba(122,146,255,${a})`;
+}
+function renderMat(el,M,opts={}){
+  const {rowLabels,colLabels,fmtd=2,maskInf,hotRow=-1,rowSel=-1,onRow,colGroups}=opts;
+  const rows=M.length, cols=M[0].length;
+  let absmax=opts.absmax;
+  if(absmax===undefined){absmax=0;for(const r of M)for(const v of r)if(isFinite(v))absmax=Math.max(absmax,Math.abs(v));}
+  el.innerHTML='';
+  el.style.gridTemplateColumns=`repeat(${cols+(rowLabels?1:0)}, max-content)`;
+  if(colLabels){
+    if(rowLabels){const h=document.createElement('div');h.className='c hd';el.appendChild(h);}
+    colLabels.forEach(t=>{const h=document.createElement('div');h.className='c hd';h.textContent=t;el.appendChild(h);});
+  }
+  M.forEach((row,i)=>{
+    if(rowLabels){const h=document.createElement('div');h.className='c hd';h.textContent=rowLabels[i];h.style.cursor=onRow?'pointer':'default';if(onRow)h.onclick=()=>onRow(i);el.appendChild(h);}
+    row.forEach((v,j)=>{
+      const d=document.createElement('div');d.className='c';
+      if(!isFinite(v)&&v<0){d.classList.add('inf');d.textContent='−inf';}
+      else{d.textContent=fmt(v,fmtd);d.style.background=heatColor(v,absmax);}
+      if(maskInf&&maskInf[i]&&maskInf[i][j])d.classList.add('inf');
+      if(i===rowSel)d.classList.add('row-on');
+      if(i===hotRow)d.classList.add('hot');
+      if(colGroups){const g=colGroups(j);if(g)d.style.borderBottom=`2px solid ${g}`;}
+      if(onRow){d.style.cursor='pointer';d.onclick=()=>onRow(i);}
+      el.appendChild(d);
+    });
+  });
+}
+function renderVecRow(el,v,opts={}){renderMat(el,[v],opts)}
+
+const showTx=t=>t.replace(/ /g,'␣').replace(/\n/g,'⏎');
+function tokColor(id){const h=(id*137.508)%360;return{bg:`hsla(${h},70%,62%,.14)`,bd:`hsla(${h},70%,66%,.5)`,fg:`hsla(${h},85%,82%,1)`}}
+function tokChip(text,id,small=false){
+  const s=document.createElement('span');s.className='tk';const c=tokColor(id);
+  s.style.background=c.bg;s.style.borderColor=c.bd;s.style.color=c.fg;
+  if(small){s.style.fontSize='10.5px';s.style.padding='4px 5px'}
+  s.textContent=showTx(text);
+  const sub=document.createElement('sub');sub.textContent=id;s.appendChild(sub);
+  return s;
+}
+
+const ENC=new TextEncoder(), DECU=new TextDecoder('utf-8',{fatal:false});
+const PK=(a,b)=>a*100000+b, UPK=k=>[Math.floor(k/100000),k%100000];
+function getStats(ids){
+  const m=new Map();
+  for(let i=0;i<ids.length-1;i++){const k=PK(ids[i],ids[i+1]);m.set(k,(m.get(k)||0)+1);}
+  return m;
+}
+function mergeIds(ids,pa,pb,newId){
+  const out=[];let i=0;
+  while(i<ids.length){
+    if(i<ids.length-1&&ids[i]===pa&&ids[i+1]===pb){out.push(newId);i+=2}
+    else{out.push(ids[i]);i+=1}
+  }
+  return out;
+}
+function maxPair(stats){
+  let bk=-1,bv=-1;
+  for(const[k,v]of stats){if(v>bv){bv=v;bk=k}}
+  return[bk,bv];
+}
+class BPE{
+  constructor(){this.reset()}
+  reset(){this.merges=new Map();this.mergeInfo=[];this.vocab=[];for(let i=0;i<256;i++)this.vocab.push(Uint8Array.of(i));}
+  trainStep(ids,i){
+    const stats=getStats(ids);
+    if(stats.size===0)return null;
+    const[k,count]=maxPair(stats);const[a,b]=UPK(k);
+    const newId=256+i;
+    const nids=mergeIds(ids,a,b,newId);
+    this.merges.set(k,newId);
+    const bytes=new Uint8Array([...this.vocab[a],...this.vocab[b]]);
+    this.vocab[newId]=bytes;
+    this.mergeInfo.push({a,b,id:newId,count});
+    return{ids:nids,a,b,count,newId};
+  }
+  pad(target){for(let id=this.vocab.length;id<target;id++)this.vocab[id]=new Uint8Array(0);}
+  encode(text){
+    let ids=[...ENC.encode(text)];
+    while(ids.length>=2){
+      const stats=getStats(ids);
+      let bestK=-1,bestRank=Infinity;
+      for(const[k]of stats){const r=this.merges.has(k)?this.merges.get(k):Infinity;if(r<bestRank){bestRank=r;bestK=k}}
+      if(!isFinite(bestRank))break;
+      const[a,b]=UPK(bestK);
+      ids=mergeIds(ids,a,b,this.merges.get(bestK));
+    }
+    return ids;
+  }
+  tokText(id){return DECU.decode(this.vocab[id])}
+  decode(ids){
+    let len=0;ids.forEach(i=>len+=this.vocab[i].length);
+    const blob=new Uint8Array(len);let o=0;
+    ids.forEach(i=>{blob.set(this.vocab[i],o);o+=this.vocab[i].length});
+    return DECU.decode(blob);
+  }
+}
+
+const DANTE_BLOCK=
+"Nel mezzo del cammin di nostra vita\n"+
+"mi ritrovai per una selva oscura,\n"+
+"ché la diritta via era smarrita.\n"+
+"Ahi quanto a dir qual era è cosa dura\n"+
+"esta selva selvaggia e aspra e forte\n"+
+"che nel pensier rinova la paura!\n"+
+"Tant' è amara che poco è più morte;\n"+
+"ma per trattar del ben ch'i' vi trovai,\n"+
+"dirò de l'altre cose ch'i' v'ho scorte.\n"+
+"Io non so ben ridir com' i' v'intrai,\n"+
+"tant' era pien di sonno a quel punto\n"+
+"che la verace via abbandonai.\n"+
+"Ma poi ch'i' fui al piè d'un colle giunto,\n"+
+"là dove terminava quella valle\n"+
+"che m'avea di paura il cor compunto,\n"+
+"guardai in alto e vidi le sue spalle\n"+
+"vestite già de' raggi del pianeta\n"+
+"che mena dritto altrui per ogne calle.\n"+
+"Allor fu la paura un poco queta,\n"+
+"che nel lago del cor m'era durata\n"+
+"la notte ch'i' passai con tanta pietà.\n";
+const FALLBACK_TEXT=DANTE_BLOCK.repeat(40);
+
+const SECTIONS=[['hero','Inizio'],['s01','01 Dimensioni'],['s02','02 BPE Tokenizer'],['s03','03 get_batch'],
+ ['s04','04 Embeddings'],['s05','05 Head'],['s06','06 Multi-Head'],['s07','07 FeedForward'],
+ ['s08','08 Block'],['s08b','08 · Residual stream'],['s09','09 GPT completo'],['s10','10 Loss'],['s11','11 Training'],
+ ['s12','12 Generation'],['s13','13 Checkpoint'],['s14','14 Glossario']];
+function initNav(){
+  const nav=$('#railnav');
+  SECTIONS.forEach(([id,label])=>{
+    const a=document.createElement('a');a.href='#'+id;a.dataset.id=id;a.setAttribute('aria-label',label);
+    const t=document.createElement('span');t.className='tip';t.textContent=label;a.appendChild(t);
+    nav.appendChild(a);
+  });
+  const links=$$('#railnav a');
+  const secs=SECTIONS.map(([id])=>document.getElementById(id));
+  function onScroll(){
+    const y=scrollY,dh=document.documentElement.scrollHeight-innerHeight;
+    const f=dh>0?y/dh:0;
+    $('#railfill').style.height=(f*100)+'%';
+    $('#mprog i').style.width=(f*100)+'%';
+    let cur=0;
+    secs.forEach((s,i)=>{if(s&&s.getBoundingClientRect().top<innerHeight*0.4)cur=i});
+    links.forEach((l,i)=>l.classList.toggle('on',i===cur));
+  }
+  addEventListener('scroll',onScroll,{passive:true});onScroll();
+}
+function initPulse(){
+
+  $$('#pipe .stage').forEach(g=>{
+    g.style.cursor='pointer';
+    g.addEventListener('click',()=>{const el=document.getElementById(g.dataset.go);if(el)el.scrollIntoView({behavior:REDUCED?'auto':'smooth',block:'start'})});
+  });
+  const path=$('#wirepath'),pulse=$('#pulse');
+  if(!path||!pulse)return;
+  const L=path.getTotalLength();
+  if(REDUCED){const p=path.getPointAtLength(0);pulse.setAttribute('cx',p.x);pulse.setAttribute('cy',p.y);return}
+  let t=0,last=performance.now();
+  (function step(now){
+    t+=(now-last)*0.09;last=now;
+    const p=path.getPointAtLength(t%L);
+    pulse.setAttribute('cx',p.x);pulse.setAttribute('cy',p.y);
+    requestAnimationFrame(step);
+  })(last);
+}
+function initReveal(){
+  const els=$$('section.st > *');
+  els.forEach(e=>e.classList.add('reveal'));
+  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{rootMargin:'0px 0px -8% 0px'});
+  els.forEach(e=>io.observe(e));
+}
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function initHighlight(){
+  $$('pre code.py').forEach(code=>{
+    const raw=code.textContent;
+    const re=/("""[\s\S]*?""")|(#[^\n]*)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')|\b(def|class|return|if|else|elif|for|while|in|not|and|or|None|True|False|import|from|as|with|is|lambda|break|continue|pass|raise|try|except|assert|yield|del|staticmethod|float|int|list|range|len|max|min|sum|print|isinstance|getattr|zip|super)\b|(@[\w.]+)|\b(self)\b|\b(\d+(?:\.\d+)?(?:e-?\d+)?)\b/g;
+    let out='',i=0,m;
+    while((m=re.exec(raw))){
+      out+=esc(raw.slice(i,m.index));
+      const s=esc(m[0]);
+      if(m[1]||m[3])out+=`<span class="hl-s">${s}</span>`;
+      else if(m[2])out+=`<span class="hl-c">${s}</span>`;
+      else if(m[4])out+=`<span class="hl-k">${s}</span>`;
+      else if(m[5])out+=`<span class="hl-d">${s}</span>`;
+      else if(m[6])out+=`<span class="hl-self">${s}</span>`;
+      else out+=`<span class="hl-n">${s}</span>`;
+      i=m.index+m[0].length;
+    }
+    out+=esc(raw.slice(i));
+    code.innerHTML=out;
+  });
+}
+
+function initShape(){
+  const B=$('#shB'),T=$('#shT'),C=$('#shC');
+  function upd(){
+    $('#shBo').textContent=B.value;$('#shTo').textContent=T.value;$('#shCo').textContent=C.value;
+    const b=+B.value,t=+T.value,c=+C.value,n=b*t*c;
+    $('#shOut').innerHTML=`<span class="shp">(${b}, ${t}, ${c})</span> &nbsp;→&nbsp; «<b>${b}</b> sequenze × <b>${t}</b> token × <b>${c}</b> numeri per token» &nbsp;=&nbsp; <span class="num">${fmtInt(n)}</span> float32 ≈ ${fmtInt(Math.round(n*4/1024))} KB per tensore.`;
+  }
+  [B,T,C].forEach(x=>x.addEventListener('input',upd));upd();
+}
+
+const bpeA={ids:[],bpe:new BPE(),step:0,timer:null,lastWin:null,startLen:0};
+function bpeAReset(){
+  clearInterval(bpeA.timer);bpeA.timer=null;$('#bpeAuto').textContent='▶ Auto';
+  bpeA.bpe=new BPE();bpeA.step=0;bpeA.lastWin=null;
+  bpeA.ids=[...ENC.encode($('#bpeText').value)];
+  bpeA.startLen=bpeA.ids.length;
+  bpeARender();
+}
+function bpeAStep(){
+  const r=bpeA.bpe.trainStep(bpeA.ids,bpeA.step);
+  if(!r){clearInterval(bpeA.timer);bpeA.timer=null;$('#bpeAuto').textContent='▶ Auto';return false}
+  bpeA.ids=r.ids;bpeA.step++;bpeA.lastWin=r;
+  bpeARender();return true;
+}
+function bpeARender(){
+  const t=bpeA.bpe;
+  $('#bpeStats').textContent=`merge: ${bpeA.step} · vocab: ${256+bpeA.step} · ${bpeA.startLen} byte → ${bpeA.ids.length} token (×${(bpeA.startLen/Math.max(1,bpeA.ids.length)).toFixed(2)})`;
+  $('#bpeLen').textContent=`(${bpeA.ids.length})`;
+  const line=$('#bpeIds');line.innerHTML='';
+  const show=bpeA.ids.slice(0,140);
+  show.forEach(id=>line.appendChild(tokChip(t.tokText(id)||'∅',id,true)));
+  if(bpeA.ids.length>140){const s=document.createElement('span');s.className='mono faint';s.textContent=` … +${bpeA.ids.length-140}`;line.appendChild(s)}
+
+  const stats=getStats(bpeA.ids);
+  const arr=[...stats.entries()].sort((x,y)=>y[1]-x[1]).slice(0,9);
+  const [wk]=maxPair(stats.size?stats:new Map([[0,0]]));
+  const mx=arr.length?arr[0][1]:1;
+  const P=$('#bpePairs');P.innerHTML='';
+  arr.forEach(([k,c])=>{
+    const[a,b]=UPK(k);
+    const d=document.createElement('div');d.className='pair'+(k===wk?' win':'');
+    d.innerHTML=`<span class="pl">(${showTx(t.tokText(a)||'·')} + ${showTx(t.tokText(b)||'·')})</span><span class="pb" style="width:${(c/mx)*130}px"></span><span class="pc">×${c}</span>`;
+    P.appendChild(d);
+  });
+  if(!arr.length)P.innerHTML='<span class="faint mono">nessuna coppia ripetibile: training finito</span>';
+
+  const Vv=$('#bpeVocab');Vv.innerHTML='';
+  t.mergeInfo.slice(-9).reverse().forEach(mi=>{
+    const d=document.createElement('div');d.className='pair'+(bpeA.lastWin&&mi.id===bpeA.lastWin.newId?' win':'');
+    d.innerHTML=`<span class="pl">[${mi.id}] = «${showTx(DECU.decode(t.vocab[mi.id]))}»</span><span class="pc">= [${mi.a}]+[${mi.b}] ×${mi.count}</span>`;
+    Vv.appendChild(d);
+  });
+  if(!t.mergeInfo.length)Vv.innerHTML='<span class="faint mono">ancora nessun merge: premi «Esegui 1 merge»</span>';
+}
+function initBpeA(){
+  $('#bpeStep').onclick=()=>bpeAStep();
+  $('#bpeStep10').onclick=()=>{for(let i=0;i<10;i++)if(!bpeAStep())break};
+  $('#bpeReset').onclick=bpeAReset;
+  $('#bpeText').addEventListener('input',bpeAReset);
+  $('#bpeAuto').onclick=()=>{
+    if(bpeA.timer){clearInterval(bpeA.timer);bpeA.timer=null;$('#bpeAuto').textContent='▶ Auto'}
+    else{$('#bpeAuto').textContent='⏸ Pausa';bpeA.timer=setInterval(()=>{if(!bpeAStep()){}},REDUCED?60:330)}
+  };
+  bpeAReset();
+}
+
+const TOK=new BPE();let TOK_IDS=null,TOK_READY=false;
+const TOKS=new BPE();let TOKS_IDS=null;
+function trainRealTokenizer(done){
+  let ids=[...ENC.encode(FALLBACK_TEXT)];
+  let i=0;const NM=256;
+  function chunk(){
+    const t0=performance.now();
+    while(i<NM&&performance.now()-t0<24){
+      const r=TOK.trainStep(ids,i);
+      if(!r){break}
+      ids=r.ids;
+      if(i===95){
+        TOKS.merges=new Map(TOK.merges);TOKS.vocab=TOK.vocab.slice();
+        TOKS.mergeInfo=TOK.mergeInfo.slice();TOKS_IDS=ids.slice();
+      }
+      i++;
+    }
+    $('#bpeReady').textContent=`⏳ training del tokenizer… merge ${i}/${NM}`;
+    if(i<NM){setTimeout(chunk,0)}
+    else{
+      TOK.pad(512);TOK_IDS=ids;TOK_READY=true;
+      $('#bpeReady').innerHTML=`<span style="color:var(--green)">✔</span> tokenizer pronto: 512 token · testo di training: ${fmtInt(FALLBACK_TEXT.length)} caratteri → ${fmtInt(ids.length)} token (compressione ×${(ENC.encode(FALLBACK_TEXT).length/ids.length).toFixed(2)})`;
+      done();
+    }
+  }
+  chunk();
+}
+function encRender(){
+  if(!TOK_READY)return;
+  const text=$('#encText').value;
+  const ids=TOK.encode(text);
+  const nbytes=ENC.encode(text).length;
+  $('#encStats').textContent=`${text.length} caratteri · ${nbytes} byte → ${ids.length} token (×${(nbytes/Math.max(1,ids.length)).toFixed(2)})`;
+  const out=$('#encOut');out.innerHTML='';
+  ids.forEach((id,ix)=>{
+    const c=tokChip(TOK.tokText(id)||'∅',id);
+    c.style.cursor='pointer';
+    c.onclick=()=>encTree(id);
+    out.appendChild(c);
+  });
+  const dec=TOK.decode(ids);
+  $('#encDec').innerHTML=`decode([${ids.slice(0,12).join(', ')}${ids.length>12?', …':''}]) → <span class="ok">"${esc(dec.slice(0,90))}${dec.length>90?'…':''}"</span>  ·  round-trip ${dec===text?'<span class="ok">identico ✔</span>':'<span class="wm">≠ (caratteri fuori vocabolario sostituiti)</span>'}`;
+}
+function encTree(id){
+  const box=$('#encTree');box.style.display='block';
+  const lines=[];
+  (function walk(i,depth){
+    const pad='&nbsp;'.repeat(depth*3);
+    const info=TOK.mergeInfo.find(m=>m.id===i);
+    const tx=esc(showTx(TOK.tokText(i)||'∅'));
+    if(i<256||!info){lines.push(`${pad}[${i}] «${tx}» ${i<256?'<span class="faint">— byte base</span>':''}`);return}
+    lines.push(`${pad}[${i}] «${tx}» <span class="faint">= merge n°${i-256} di</span> [${info.a}] + [${info.b}]`);
+    walk(info.a,depth+1);walk(info.b,depth+1);
+  })(id,0);
+  box.innerHTML=`<b class="mono" style="color:var(--amber)">albero dei merge del token [${id}]</b><br><span class="mono" style="font-size:12.5px;line-height:1.8">${lines.join('<br>')}</span>`;
+}
+function initBpeB(){$('#encGo').onclick=encRender;$('#encText').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();encRender()}})}
+
+const GB={B:4,T:8,rng:mulberry32(20260718)};
+const ROWC=['#7fd8e8','#b3a0ff','#ffb454','#8fe8b0'];
+function gbRun(){
+  if(!TOK_READY)return;
+  const stream=TOKS_IDS.slice(0,88);
+  const d=TOKS_IDS;
+  const ix=Array.from({length:GB.B},()=>Math.floor(GB.rng()*(88-GB.T-1)));
+  $('#gbIx').textContent='['+ix.join(', ')+']';
+  const line=$('#gbStream');line.innerHTML='';
+  stream.forEach((id,pos)=>{
+    const c=tokChip(TOKS.tokText(id),id,true);
+    ix.forEach((s,r)=>{if(pos>=s&&pos<s+GB.T){c.style.outline=`2px solid ${ROWC[r]}`;c.style.outlineOffset='1px'}});
+    c.title=`pos ${pos} · «${TOKS.tokText(id)}»`;
+    line.appendChild(c);
+  });
+  const X=ix.map(s=>d.slice(s,s+GB.T)), Y=ix.map(s=>d.slice(s+1,s+GB.T+1));
+  const mk=(el,M)=>{
+    el.innerHTML='';el.style.gridTemplateColumns=`repeat(${GB.T}, max-content)`;
+    M.forEach((row,r)=>row.forEach(id=>{
+      const c=document.createElement('div');c.className='c';c.textContent=id;
+      c.style.background=`${ROWC[r]}22`;c.style.borderColor=`${ROWC[r]}55`;
+      c.title=`«${showTx(TOKS.tokText(id))}»`;
+      el.appendChild(c);
+    }));
+  };
+  mk($('#gbX'),X);mk($('#gbY'),Y);
+  const t0=$('#gbTasks');t0.innerHTML='';
+  let html='';
+  for(let j=0;j<GB.T;j++){
+    const ctx=X[0].slice(0,j+1);
+    html+=`<span class="cy">dopo</span> [${ctx.join(',')}] <span class="faint">«${esc(showTx(ctx.map(i=>TOKS.tokText(i)).join('')))}»</span> <span class="cy">→ target</span> <span class="wm">${Y[0][j]}</span> <span class="faint">«${esc(showTx(TOKS.tokText(Y[0][j])))}»</span>\n`;
+  }
+  t0.innerHTML=html;
+}
+function initGb(){$('#gbGo').onclick=gbRun}
+
+const EMBC=8;
+const embVal=(id,ch)=>seededVec(9000+id,EMBC,0.02)[ch];
+const posVal=(p,ch)=>seededVec(700+p,EMBC,0.02)[ch];
+const EMB={ids:[],sel:0};
+function embRender(){
+  const id=EMB.ids[EMB.sel]??0, p=+$('#embPos').value;
+  $('#embPosO').textContent=p;$('#embIdLbl').textContent=id;$('#embPosLbl').textContent=p;
+  const te=Array.from({length:EMBC},(_,c)=>embVal(id,c));
+  const pe=Array.from({length:EMBC},(_,c)=>posVal(p,c));
+  const su=te.map((v,i)=>v+pe[i]);
+  const cols=Array.from({length:EMBC},(_,i)=>'c'+i);
+  const am=Math.max(...[...te,...pe,...su].map(Math.abs));
+  renderVecRow($('#embTok'),te,{colLabels:cols,fmtd:3,absmax:am});
+  renderVecRow($('#embPosM'),pe,{colLabels:cols,fmtd:3,absmax:am});
+  renderVecRow($('#embSum'),su,{colLabels:cols,fmtd:3,absmax:am});
+}
+function initEmb(){
+  const phrase='Nel mezzo del cammin di nostra vita';
+  EMB.ids=TOKS.encode(phrase).slice(0,8);
+  const line=$('#embToks');line.innerHTML='';
+  EMB.ids.forEach((id,i)=>{
+    const c=tokChip(TOKS.tokText(id),id);c.style.cursor='pointer';
+    if(i===EMB.sel)c.classList.add('sel');
+    c.onclick=()=>{EMB.sel=i;[...line.children].forEach((k,j)=>k.classList.toggle('sel',j===i));embRender()};
+    line.appendChild(c);
+  });
+  $('#embPos').max=EMB.ids.length-1;
+  $('#embPos').addEventListener('input',embRender);
+  embRender();
+}
+
+const AT={T:4,C:8,hs:4,step:0,q:3,x:null,Wq:null,Wk:null,Wv:null,labels:[]};
+const STEPS_AT=['x (4×8)','Q · K · V','score Q·Kᵀ','causal mask','softmax','out = wei·V','riepilogo'];
+function atCompute(){
+  const scale=$('#atScale').checked?1/Math.sqrt(AT.hs):1;
+  const useMask=$('#atMask').checked;
+  const Q=matmul(AT.x,AT.Wq),K=matmul(AT.x,AT.Wk),Vv=matmul(AT.x,AT.Wv);
+  const S=matmul(Q,transpose(K)).map(r=>r.map(v=>v*scale));
+  const M=S.map((r,i)=>r.map((v,j)=>(useMask&&j>i)?-Infinity:v));
+  const W=M.map(r=>softmax(r));
+  const O=matmul(W,Vv);
+  return{Q,K,V:Vv,S,M,W,O};
+}
+function atRender(){
+  const st=AT.step;
+  $$('#atSteps button').forEach((b,i)=>b.classList.toggle('on',i===st));
+  $('#atPrev').disabled=st===0;$('#atNext').disabled=st===STEPS_AT.length-1;
+  $('#atQlbl').textContent=`t${AT.q} «${showTx(AT.labels[AT.q])}»`;
+  const{Q,K,V,S,M,W,O}=atCompute();
+  const stage=$('#atStage');stage.innerHTML='';
+  $('#atSat').style.display=st===4?'block':'none';
+  const rl=AT.labels.map((t,i)=>`t${i}`);
+  const onRow=i=>{AT.q=i;atRender()};
+  const EX={
+    0:`<b>x (T×C) = (4×8)</b>: i 4 token in ingresso, un vettore di 8 numeri ciascuno (il residual stream della stazione 04, amplificato come dopo il training). Clicca una riga per scegliere la <b>query</b> da seguire.`,
+    1:`Tre proiezioni lineari <b>senza bias</b> portano ogni riga da C=8 a hs=4: <span class="q">Q = x·W_q</span>, <span class="k">K = x·W_k</span>, <span class="v">V = x·W_v</span>. Ogni matrice è (4×4): stesse informazioni, tre "viste" con ruoli diversi.`,
+    2:`<b>score = Q·Kᵀ ${$('#atScale').checked?'/ √hs':''}</b> → (4×4): la cella (i,j) è il dot product tra la <span class="q">Query di t<sub>i</sub></span> e la <span class="k">Key di t<sub>j</sub></span> — quanto t<sub>i</sub> è "interessato" a t<sub>j</sub>. ${$('#atScale').checked?'':'<span class="neg">Scaling OFF: nota i valori più estremi.</span>'}`,
+    3:`<b>causal mask</b>: dove j&gt;i (il futuro) lo score diventa <span class="neg">−inf</span>. ${$('#atMask').checked?'Il triangolo superiore è spento: t<sub>1</sub> non può leggere t<sub>2</sub>, t<sub>3</sub>…':'<span class="neg">Mask OFF: ogni token vede anche il futuro — in training sarebbe barare, i target sono proprio lì.</span>'}`,
+    4:`<b>softmax per riga</b>: ogni riga diventa una distribuzione (somma = 1.000). I <span class="neg">−inf</span> diventano peso esattamente 0. La riga i dice: «per costruire l'output di t<sub>i</sub>, pesa così i token visibili».`,
+    5:`<b>out = wei·V</b> → (4×hs): ogni riga di output è la <b>media pesata</b> dei <span class="v">Value</span> con i pesi della softmax. L'informazione dei token attesi confluisce nel token che guarda.`,
+    6:`Riepilogo per la query selezionata: la sua riga di pesi combina i Value riga per riga. Cambia query (clic sulle righe), togli la mask o lo scaling e osserva come cambia tutto il flusso.`
+  };
+  $('#atExplain').innerHTML=EX[st];
+  const add=(label,M2,opts={})=>{
+    const w=document.createElement('div');
+    const l=document.createElement('div');l.className='mlab';l.innerHTML=label;w.appendChild(l);
+    const m=document.createElement('div');m.className='mat';w.appendChild(m);
+    renderMat(m,M2,Object.assign({rowLabels:rl,rowSel:AT.q,onRow},opts));
+    return w;
+  };
+  const row=document.createElement('div');row.className='matrow';stage.appendChild(row);
+  if(st===0){row.appendChild(add('x <b>(4×8)</b>',AT.x,{colLabels:Array.from({length:8},(_,i)=>'c'+i)}));}
+  if(st===1){
+    row.appendChild(add('<span class="q">Q = x·W_q</span> <b>(4×4)</b>',Q));
+    row.appendChild(add('<span class="k">K = x·W_k</span> <b>(4×4)</b>',K));
+    row.appendChild(add('<span class="v">V = x·W_v</span> <b>(4×4)</b>',V));
+  }
+  if(st===2){row.appendChild(add(`score = Q·Kᵀ${$('#atScale').checked?' / √4':''} <b>(4×4)</b>`,S,{colLabels:rl}));}
+  if(st===3){row.appendChild(add('score mascherati <b>(4×4)</b>',M,{colLabels:rl}));}
+  if(st===4){
+    const W2=W.map(r=>r.slice());
+    const wEl=add('wei = softmax(riga) <b>(4×4)</b>',W2,{colLabels:rl,fmtd:3,absmax:1});
+    row.appendChild(wEl);
+    const sums=W.map(r=>[r.reduce((a,b)=>a+b,0)]);
+    row.appendChild(add('Σ riga',sums,{colLabels:['Σ'],fmtd:3,absmax:1}));
+    atSat(S,M);
+  }
+  if(st===5){
+    row.appendChild(add('wei <b>(4×4)</b>',W,{colLabels:rl,fmtd:3,absmax:1}));
+    const ar=document.createElement('div');ar.className='arrow';ar.textContent='×';row.appendChild(ar);
+    row.appendChild(add('<span class="v">V</span> <b>(4×4)</b>',V));
+    const eq=document.createElement('div');eq.className='arrow';eq.textContent='=';row.appendChild(eq);
+    row.appendChild(add('out <b>(4×4)</b>',O,{hotRow:AT.q}));
+  }
+  if(st===6){
+    const i=AT.q;
+    const terms=W[i].map((w,j)=>`<span style="white-space:nowrap">${fmt(w,3)} · <span class="v">V<sub>${j}</sub></span></span>`).join(' <span class="faint">+</span> ');
+    const d=document.createElement('div');
+    d.innerHTML=`<div class="mlab">out della query t${i} «${esc(showTx(AT.labels[i]))}»</div>
+      <div class="formula" style="max-width:100%">out<sub>${i}</sub> <span class="op">=</span> ${terms} <span class="op">=</span> [ ${O[i].map(v=>fmt(v,2)).join(', ')} ]</div>
+      <p class="dim" style="font-size:14px">I pesi vengono dalla riga ${i} della softmax; i <span class="v">Value</span> sono le righe della matrice V. Nel modello vero succede identico, ma con hs = 32 e T fino a 64 — e in 4 head × 4 layer contemporaneamente.</p>`;
+    row.appendChild(d);
+  }
+}
+function atSat(S,M){
+  const m=+$('#atSatM').value;$('#atSatO').textContent=m.toFixed(1);
+  const row=M[AT.q].map(v=>isFinite(v)?v*m:v);
+  const p=softmax(row);
+  const bars=$('#atSatBars');bars.innerHTML='';
+  p.forEach((v,j)=>{
+    const b=document.createElement('div');b.className='bar'+(v===Math.max(...p)?' win':'');
+    b.innerHTML=`<span class="pv">${(v*100).toFixed(0)}%</span><i style="height:${Math.max(2,v*95)}px"></i><b>t${j}</b>`;
+    bars.appendChild(b);
+  });
+}
+function initAt(){
+  AT.labels=['·','·','·','·'];
+  AT.x=Array.from({length:4},()=>Array.from({length:8},()=>0));
+  const steps=$('#atSteps');
+  STEPS_AT.forEach((s,i)=>{const b=document.createElement('button');b.textContent=`${i}. ${s}`;b.onclick=()=>{AT.step=i;atRender()};steps.appendChild(b)});
+  $('#atPrev').onclick=()=>{AT.step=Math.max(0,AT.step-1);atRender()};
+  $('#atNext').onclick=()=>{AT.step=Math.min(STEPS_AT.length-1,AT.step+1);atRender()};
+  $('#atMask').onchange=atRender;$('#atScale').onchange=atRender;
+  $('#atSatM').addEventListener('input',()=>{const{S,M}=atCompute();atSat(S,M)});
+  AT.Wq=seededMat(101,8,4,0.5);AT.Wk=seededMat(202,8,4,0.5);AT.Wv=seededMat(303,8,4,0.5);
+}
+function atData(){
+  const ids=TOKS.encode('Nel mezzo del cammin').slice(0,4);
+  AT.labels=ids.map(i=>TOKS.tokText(i));
+  AT.x=ids.map((id,t)=>Array.from({length:8},(_,c)=>(embVal(id,c)+posVal(t,c))*30));
+  AT.step=0;atRender();
+}
+
+const RS={step:0};
+const RS_STEPS=[
+ {g:'rs-emb',   s:'0 · nasce x',      t:'Il lookup di token e posizioni produce <strong>x₀</strong>: da qui in poi questo tensore <strong>non verrà mai sostituito</strong>, solo arricchito. Come una lavagna condivisa su cui ogni Block aggiunge appunti.', e:'x = tok_emb + pos_emb'},
+ {g:'rs-ln1',   s:'1 · lettura LN₁',  t:'<span class="tt">LayerNorm₁</span> prende una <strong>copia</strong> di x e la normalizza (media 0, varianza 1 per token). Lo stream originale resta intatto sulla banda: non si tocca la lavagna, se ne fotografa una versione ripulita.', e:'LN₁(x)  <span class="op">// x invariato</span>'},
+ {g:'rs-attn',  s:'2 · Δ₁ attention', t:'Dalla copia normalizzata l\'attention produce <strong>Δ₁</strong>: stessa shape <span class="shp">(B,T,C)</span>, per ogni posizione contiene l\'informazione raccolta <em>dalle altre posizioni</em>. È una proposta di aggiornamento, non ancora scritta.', e:'Δ₁ = MultiHeadAttention(LN₁(x))'},
+ {g:'rs-plus1', s:'3 · scrittura +',  t:'Il contributo viene <strong>sommato</strong> allo stream nel nodo +. Se Δ₁ fosse tutto zero, x passerebbe identico: è il <em>percorso identità</em> lungo cui attivazioni e gradiente fluiscono senza attenuarsi.', e:'x = x + Δ₁'},
+ {g:'rs-ffn',   s:'4 · Δ₂ FFN',       t:'Stesso rituale: <span class="tt">LayerNorm₂</span> (parametri propri) legge una copia del nuovo x, e il <span class="tt">FeedForward</span> calcola <strong>Δ₂</strong> trasformando ogni posizione da sola, senza guardare le altre.', e:'Δ₂ = FeedForward(LN₂(x))'},
+ {g:'rs-plus2', s:'5 · scrittura +',  t:'Anche Δ₂ viene riversato con una somma. Un Block completo = <strong>due letture, due scritture</strong>. Nota: sulla banda le shape non cambiano mai — <span class="shp">(B,T,C)</span> dall\'inizio alla fine.', e:'x = x + Δ₂'},
+ {g:'rs-rep',   s:'6 · ×4 Block',     t:'I 4 Block ripetono la stessa danza con <strong>pesi diversi</strong>: 8 contributi totali si accumulano. I layer profondi leggono uno stream già arricchito dai precedenti — così nascono rappresentazioni via via più astratte.', e:'x = emb + Δ₁ + Δ₂ + … + Δ₈'},
+ {g:'rs-lnf',   s:'7 · LN finale',    t:'Prima di uscire, <span class="tt">ln_f</span> riporta lo stream a scala standard: dopo 8 somme la magnitudine è cresciuta, e la testa di uscita lavora meglio su input normalizzati.', e:'x = LayerNorm_f(x)'},
+ {g:'rs-head',  s:'8 · logits',       t:'La matrice condivisa con l\'embedding (weight tying) proietta ogni vettore da C=128 a V=512 punteggi: <strong>i logits</strong>. Da qui il flusso si biforca: cross-entropy in training, sampling in generazione.', e:'logits = x · W_embᵀ + b'}
+];
+function rsRender(){
+  const st=RS.step;
+  $$('#rsSteps button').forEach((b,i)=>b.classList.toggle('on',i===st));
+  RS_STEPS.forEach(s=>{const g=document.getElementById(s.g);if(g)g.classList.remove('lit','done')});
+  for(let i=0;i<st;i++){const g=document.getElementById(RS_STEPS[i].g);if(g)g.classList.add('done')}
+  const gg=document.getElementById(RS_STEPS[st].g);if(gg)gg.classList.add('lit');
+  $('#rsText').innerHTML=RS_STEPS[st].t;
+  $('#rsEq').innerHTML=RS_STEPS[st].e;
+  $('#rsPrev').disabled=st===0;$('#rsNext').disabled=st===RS_STEPS.length-1;
+}
+function initRs(){
+  const steps=$('#rsSteps');if(!steps)return;
+  RS_STEPS.forEach((s,i)=>{const b=document.createElement('button');b.textContent=s.s;b.onclick=()=>{RS.step=i;rsRender()};steps.appendChild(b)});
+  $('#rsPrev').onclick=()=>{RS.step=Math.max(0,RS.step-1);rsRender()};
+  $('#rsNext').onclick=()=>{RS.step=Math.min(RS_STEPS.length-1,RS.step+1);rsRender()};
+  rsRender();
+}
+
+const MH={hs:2,H:4};
+const HEADC=['#7fd8e8','#b3a0ff','#ffb454','#8fe8b0'];
+function mhCompute(){
+  const outs=[];
+  for(let h=0;h<MH.H;h++){
+    const Wq=seededMat(1000+h,8,2,0.5),Wk=seededMat(2000+h,8,2,0.5),Wv=seededMat(3000+h,8,2,0.5);
+    const Q=matmul(AT.x,Wq),K=matmul(AT.x,Wk),Vv=matmul(AT.x,Wv);
+    const S=matmul(Q,transpose(K)).map((r,i)=>r.map((v,j)=>j>i?-Infinity:v/Math.sqrt(2)));
+    const W=S.map(r=>softmax(r));
+    outs.push(matmul(W,Vv));
+  }
+  const cat=AT.x.map((_,t)=>outs.flatMap(o=>o[t]));
+  const Wp=seededMat(777,8,8,0.35);
+  const out=matmul(cat,Wp);
+  return{outs,cat,out};
+}
+function mhRender(phase){
+  const{outs,cat,out}=mhCompute();
+  const rl=['t0','t1','t2','t3'];
+  const H=$('#mhHeads');H.innerHTML='';
+  outs.forEach((o,h)=>{
+    const w=document.createElement('div');
+    w.style.opacity=(phase>=1)?'1':'.25';w.style.transition='opacity .4s';
+    const l=document.createElement('div');l.className='mlab';l.innerHTML=`Head ${h+1} <b>(4×2)</b>`;l.style.color=HEADC[h];w.appendChild(l);
+    const m=document.createElement('div');m.className='mat';w.appendChild(m);
+    renderMat(m,o,{rowLabels:rl,fmtd:2});
+    m.querySelectorAll('.c:not(.hd)').forEach(c=>c.style.borderBottom=`2px solid ${HEADC[h]}66`);
+    H.appendChild(w);
+  });
+  const catEl=$('#mhCat');
+  renderMat(catEl,cat,{rowLabels:rl,fmtd:2,colGroups:j=>HEADC[Math.floor(j/2)]+'88'});
+  catEl.parentElement.parentElement.style.opacity=(phase>=2)?'1':'.25';
+  const outEl=$('#mhOut');
+  renderMat(outEl,out,{rowLabels:rl,fmtd:2});
+  outEl.parentElement.parentElement.style.opacity=(phase>=3)?'1':'.25';
+}
+function initMh(){
+  $('#mhGo').onclick=()=>{
+    const ph=['x → 4 head indipendenti…','concat lungo dim=−1: 4×(4,2) → (4,8)…','proj (8→8): mescola gli head','fatto ✔'];
+    let p=1;mhRender(1);$('#mhPhase').textContent=ph[0];
+    const t=setInterval(()=>{p++;mhRender(p);$('#mhPhase').textContent=ph[p-1]||'';if(p>=4)clearInterval(t)},REDUCED?10:800);
+  };
+}
+
+const FF={W1:seededMat(4141,8,32,0.45),b1:seededVec(4242,32,0.1),W2:seededMat(4343,32,8,0.3),b2:seededVec(4444,8,0.05),seed:1};
+function ffRun(){
+  FF.seed++;
+  const x=seededVec(5000+FF.seed,8,1.0);
+  const pre=FF.W1[0].map((_,j)=>FF.b1[j]+x.reduce((s,v,i)=>s+v*FF.W1[i][j],0));
+  const rel=pre.map(v=>Math.max(0,v));
+  const out=FF.W2[0].map((_,j)=>FF.b2[j]+rel.reduce((s,v,i)=>s+v*FF.W2[i][j],0));
+  const dead=rel.filter(v=>v===0).length;
+  $('#ffDead').innerHTML=`neuroni spenti dalla ReLU: <span class="num">${dead}/32</span>`;
+  const am=Math.max(...pre.map(Math.abs));
+  renderVecRow($('#ffIn'),x,{fmtd:2});
+  const wrap=(el,v,mark)=>{
+    el.innerHTML='';el.style.gridTemplateColumns='repeat(16, max-content)';
+    v.forEach(val=>{
+      const d=document.createElement('div');d.className='c';d.textContent=fmt(val,1);
+      d.style.background=heatColor(val,am);
+      if(mark&&val<0){d.classList.add('inf')}
+      if(mark===2&&val===0){d.style.color='var(--faint)';d.textContent='0.0';d.style.background='none'}
+      el.appendChild(d);
+    });
+  };
+  wrap($('#ffPre'),pre,1);
+  wrap($('#ffRelu'),rel,2);
+  renderVecRow($('#ffOut'),out,{fmtd:2});
+}
+function initFf(){$('#ffGo').onclick=ffRun;ffRun()}
+
+const LN={seed:1};
+function lnRun(fresh){
+  if(fresh)LN.seed++;
+  const g=gaussFactory(6000+LN.seed);
+  LN.x=Array.from({length:8},()=>g()*2.2+ (g()>0? 1.4:-0.6));
+  lnRender();
+}
+function lnRender(){
+  const x=LN.x;
+  const mu=x.reduce((a,b)=>a+b,0)/8;
+  const va=x.reduce((a,b)=>a+(b-mu)**2,0)/8;
+  const xh=x.map(v=>(v-mu)/Math.sqrt(va+1e-5));
+  const gam=+$('#lnG').value,bet=+$('#lnB').value;
+  $('#lnGo2').textContent=gam.toFixed(2);$('#lnBo').textContent=bet.toFixed(2);
+  const out=xh.map(v=>gam*v+bet);
+  $('#lnMu').textContent=fmt(mu,3);$('#lnVar').textContent=fmt(va,3);
+  renderVecRow($('#lnIn'),x,{fmtd:2});
+  renderVecRow($('#lnNorm'),xh,{fmtd:2});
+  renderVecRow($('#lnOut'),out,{fmtd:2});
+}
+function rsBarsRender(){
+  const on=$('#rsTog').checked;
+  const bars=$('#rsBars');bars.innerHTML='';
+  let sig=1;
+  for(let l=0;l<=8;l++){
+    const v=on?1+0.15*l:Math.pow(0.6,l);
+    const b=document.createElement('div');b.className='bar'+(on?'':' cut');
+    if(on)b.classList.add('win');
+    const h=clamp(v/(on?2.2:1)*100,2,100);
+    b.innerHTML=`<span class="pv">${v.toFixed(2)}</span><i style="height:${h}px"></i><b>${l===0?'in':'L'+l}</b>`;
+    bars.appendChild(b);
+  }
+}
+function initLn(){$('#lnGo').onclick=()=>lnRun(true);['#lnG','#lnB'].forEach(s=>$(s).addEventListener('input',lnRender));lnRun(false);$('#rsTog').onchange=rsBarsRender;rsBarsRender()}
+
+function pcCalc(){
+  const C=+$('#pcC').value,H=+$('#pcH').value,L=+$('#pcL').value,T=+$('#pcT').value,V=+$('#pcV').value;
+  const el=$('#pcOut');
+  if(C%H!==0){el.innerHTML=`<span class="neg">AssertionError: N_EMBD (${C}) must be divisible by N_HEAD (${H})</span>`;return}
+  const tok=V*C,pos=T*C,blk=12*C*C+10*C,tot=tok+pos+L*blk+2*C+V;
+  el.innerHTML=`token_emb V·C = <span class="num">${fmtInt(tok)}</span> · pos_emb T·C = <span class="num">${fmtInt(pos)}</span> · ${L} × Block(12C²+10C = ${fmtInt(blk)}) = <span class="num">${fmtInt(L*blk)}</span> · ln_f 2C = ${fmtInt(2*C)} · bias lm_head V = ${fmtInt(V)}<br>TOTALE = <span class="num" style="font-size:18px">${fmtInt(tot)}</span> parametri &nbsp;<span class="faint">(hs = C/H = ${C/H})</span>`;
+}
+function initPc(){
+  ['#pcC','#pcH','#pcL','#pcT','#pcV'].forEach(s=>$(s).addEventListener('input',pcCalc));
+  $('#pcGlass').onclick=()=>{$('#pcC').value=128;$('#pcH').value=4;$('#pcL').value=4;$('#pcT').value=64;$('#pcV').value=512;pcCalc()};
+  $('#pcBig').onclick=()=>{$('#pcC').value=768;$('#pcH').value=12;$('#pcL').value=12;$('#pcT').value=1024;$('#pcV').value=50257;pcCalc()};
+  pcCalc();
+}
+function initHist(){
+  const cv=$('#initCv'),ctx=cv.getContext('2d');
+  const W=cv.width,Hh=cv.height,bins=81,lim=0.075;
+  function histo(sig,seed){
+    const g=gaussFactory(seed),h=new Array(bins).fill(0);
+    for(let i=0;i<10000;i++){const v=g()*sig;const b=Math.floor((v+lim)/(2*lim)*bins);if(b>=0&&b<bins)h[b]++}
+    return h;
+  }
+  const h1=histo(0.02,11),h2=histo(0.02/Math.sqrt(8),22);
+  const mx=Math.max(...h1,...h2);
+  ctx.clearRect(0,0,W,Hh);
+  ctx.strokeStyle='rgba(160,214,242,.15)';ctx.beginPath();ctx.moveTo(0,Hh-22);ctx.lineTo(W,Hh-22);ctx.stroke();
+  function draw(h,color,fill){
+    ctx.beginPath();
+    h.forEach((v,i)=>{const x=i/(bins-1)*W,y=Hh-22-(v/mx)*(Hh-42);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});
+    ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke();
+    ctx.lineTo(W,Hh-22);ctx.lineTo(0,Hh-22);ctx.closePath();ctx.fillStyle=fill;ctx.fill();
+  }
+  draw(h1,'#7fd8e8','rgba(127,216,232,.10)');
+  draw(h2,'#ffb454','rgba(255,180,84,.12)');
+  ctx.fillStyle='#93a7b6';ctx.font='11px JetBrains Mono, monospace';
+  ctx.fillText('−0.075',4,Hh-8);ctx.fillText('0',W/2-3,Hh-8);ctx.fillText('+0.075',W-46,Hh-8);
+  ctx.fillStyle='#7fd8e8';ctx.fillText('σ = 0.02 (standard)',12,18);
+  ctx.fillStyle='#ffb454';ctx.fillText('σ = 0.00707 (residual proj)',12,34);
+}
+
+const CE={logits:[2.1,0.3,-0.8,1.2,0.1,-1.5,0.6,-0.2],target:0};
+function ceRender(){
+  const p=softmax(CE.logits);
+  const loss=-Math.log(p[CE.target]);
+  $('#ceLoss').textContent=loss.toFixed(4);
+  const bars=$('#ceBars');bars.innerHTML='';
+  p.forEach((v,i)=>{
+    const b=document.createElement('div');b.className='bar'+(i===CE.target?' win':'');
+    b.style.cursor='pointer';b.title='clic: scegli come target';
+    b.innerHTML=`<span class="pv">${(v*100).toFixed(1)}%</span><i style="height:${Math.max(2,v*118)}px"></i><b>tok${i}${i===CE.target?' ◀target':''}</b>`;
+    b.onclick=()=>{CE.target=i;ceRender()};
+    bars.appendChild(b);
+  });
+  const sl=$('#ceSliders');
+  if(!sl.dataset.built){
+    sl.dataset.built=1;
+    CE.logits.forEach((v,i)=>{
+      const lab=document.createElement('label');lab.className='sld';
+      lab.innerHTML=`l${i}`;
+      const r=document.createElement('input');r.type='range';r.min=-4;r.max=6;r.step=0.1;r.value=v;r.style.width='90px';
+      r.addEventListener('input',()=>{CE.logits[i]=+r.value;ceRender()});
+      lab.appendChild(r);sl.appendChild(lab);
+    });
+  }else{
+    sl.querySelectorAll('input').forEach((r,i)=>r.value=CE.logits[i]);
+  }
+}
+function initCe(){
+  $('#ceUnif').onclick=()=>{CE.logits=CE.logits.map(()=>1.0);ceRender()};
+  $('#cePerf').onclick=()=>{CE.logits=CE.logits.map((_,i)=>i===CE.target?6:-2);ceRender()};
+  $('#ceRand').onclick=()=>{CE.logits=CE.logits.map(()=>Math.random()*7-3);ceRender()};
+  ceRender();
+}
+
+const TR={step:0,timer:null,tr:[],va:[],noise:mulberry32(99)};
+function trCurve(s,over){
+  const base=0.62+(6.2383-0.62)*Math.exp(-s/430);
+  const n=()=> (TR.noise()-0.5)*0.10;
+  const t=base+n()*Math.exp(-s/1500);
+  let v;
+  if(over){
+    const vb=0.95+(6.2383-0.95)*Math.exp(-s/430);
+    v=s<820?vb+0.02:vb+ (s-820)*0.00135;
+  }else{
+    v=0.93+(6.2383-0.93)*Math.exp(-s/455);
+  }
+  return[Math.max(0.3,t),Math.max(0.3,v+n()*0.5*Math.exp(-s/1500))];
+}
+function trDraw(){
+  const cv=$('#trCv'),ctx=cv.getContext('2d');
+  const W=cv.width,Hh=cv.height,pad=34;
+  ctx.clearRect(0,0,W,Hh);
+  ctx.strokeStyle='rgba(160,214,242,.12)';
+  for(let l=0;l<=6;l++){const y=Hh-24-(l/6)*(Hh-46);ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(W-6,y);ctx.stroke();
+    ctx.fillStyle='#5c7180';ctx.font='10px JetBrains Mono';ctx.fillText(l.toFixed(0),10,y+3)}
+  const y6=Hh-24-(6.2383/6.6)*(Hh-46);
+  ctx.strokeStyle='rgba(255,126,157,.55)';ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(pad,y6);ctx.lineTo(W-6,y6);ctx.stroke();ctx.setLineDash([]);
+  const X=s=>pad+(s/2000)*(W-pad-8), Y=v=>Hh-24-(v/6.6)*(Hh-46);
+  function line(data,color){
+    ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();
+    data.forEach((v,i)=>{const x=X(i*4),y=Y(v);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});
+    ctx.stroke();
+  }
+  line(TR.tr,'#7fd8e8');line(TR.va,'#ffb454');
+}
+function trTick(){
+  const over=$('#trOver').checked;
+  for(let k=0;k<3&&TR.step<2000;k++){
+    if(TR.step%4===0){const[t,v]=trCurve(TR.step,over);TR.tr.push(t);TR.va.push(v)}
+    if(TR.step%300===0||TR.step===1999){
+      const[t,v]=trCurve(TR.step,over);
+      $('#trLog').innerHTML+=`  step <span class="cy">${String(TR.step).padStart(5)}</span> | train loss <span class="cy">${t.toFixed(4)}</span> | val loss <span class="wm">${v.toFixed(4)}</span>\n`;
+      $('#trLog').scrollTop=1e9;
+    }
+    TR.step++;
+  }
+  $('#trStep').textContent=TR.step;
+  const nodes=$$('#trCycle .fnode');
+  nodes.forEach(n=>n.classList.toggle('on',+n.dataset.c===Math.floor(TR.step/3)%4));
+  trDraw();
+  if(TR.step>=2000){trStop();$('#trLog').innerHTML+=`<span class="ok">[model] training completo — checkpoint salvato in model.pt</span>\n`}
+}
+function trStop(){clearInterval(TR.timer);TR.timer=null;$('#trPlay').textContent='▶ Allena';$$('#trCycle .fnode').forEach(n=>n.classList.remove('on'))}
+function trReset(){trStop();TR.step=0;TR.tr=[];TR.va=[];TR.noise=mulberry32(99);
+  $('#trLog').innerHTML='[data] 30 462 caratteri → token BPE · split 90/10\n[model] Trainable parameters: 866,048\n';
+  $('#trStep').textContent='0';trDraw()}
+function initTr(){
+  $('#trPlay').onclick=()=>{
+    if(TR.timer){trStop();return}
+    if(TR.step>=2000)trReset();
+    $('#trPlay').textContent='⏸ Pausa';
+    TR.timer=setInterval(trTick,REDUCED?4:30);
+  };
+  $('#trReset').onclick=trReset;
+  $('#trOver').onchange=()=>{if(TR.step>0){const s=TR.step;trReset();while(TR.step<s){const over=$('#trOver').checked;if(TR.step%4===0){const[t,v]=trCurve(TR.step,over);TR.tr.push(t);TR.va.push(v)}TR.step++}$('#trStep').textContent=TR.step;trDraw()}};
+  trReset();
+}
+
+const GN={tri:new Map(),bi:new Map(),uni:new Map(),ctx:[],out:[],timer:null};
+function gnBuild(){
+  const ids=TOKS_IDS;
+  for(let i=0;i<ids.length;i++){
+    GN.uni.set(ids[i],(GN.uni.get(ids[i])||0)+1);
+    if(i>=1){const k=''+ids[i-1];if(!GN.bi.has(k))GN.bi.set(k,new Map());const m=GN.bi.get(k);m.set(ids[i],(m.get(ids[i])||0)+1)}
+    if(i>=2){const k=ids[i-2]+','+ids[i-1];if(!GN.tri.has(k))GN.tri.set(k,new Map());const m=GN.tri.get(k);m.set(ids[i],(m.get(ids[i])||0)+1)}
+  }
+}
+function gnLogits(ctx){
+  let m=null;
+  if(ctx.length>=2)m=GN.tri.get(ctx[ctx.length-2]+','+ctx[ctx.length-1]);
+  if(!m&&ctx.length>=1)m=GN.bi.get(''+ctx[ctx.length-1]);
+  if(!m)m=GN.uni;
+  return[...m.entries()].map(([id,c])=>[id,Math.log(c)]);
+}
+function gnStep(render=true){
+  const tau=Math.max(+$('#gnT').value,1e-6);
+  const K=+$('#gnK').value;
+  const ent=gnLogits(GN.ctx);
+
+  const scaled=ent.map(([id,l])=>[id,l/tau]);
+
+  const sorted=scaled.map(e=>e[1]).sort((a,b)=>b-a);
+  const thr=sorted[Math.min(K,sorted.length)-1];
+  const masked=scaled.map(([id,l])=>[id,l<thr?-Infinity:l]);
+  const probs=softmax(masked.map(e=>e[1]));
+
+  let r=Math.random(),pick=0;
+  for(let i=0;i<probs.length;i++){r-=probs[i];if(r<=0){pick=i;break}}
+  const nid=masked[pick][0];
+  if(render)gnBars(scaled,thr,probs,masked,pick);
+  GN.ctx.push(nid);GN.out.push(nid);
+  if(GN.ctx.length>64)GN.ctx=GN.ctx.slice(-64);
+  $('#gnOut').textContent=$('#gnPrompt').value+TOKS.decode(GN.out);
+  $('#gnOut').scrollTop=1e9;
+}
+function gnBars(scaled,thr,probs,masked,pick){
+  const order=scaled.map((e,i)=>i).sort((a,b)=>scaled[b][1]-scaled[a][1]).slice(0,10);
+  const bars=$('#gnBars');bars.innerHTML='';
+  order.forEach(i=>{
+    const[id,l]=scaled[i];
+    const cut=l<thr;
+    const p=probs[i];
+    const b=document.createElement('div');
+    b.className='bar'+(cut?' cut':'')+(i===pick?' win':'');
+    b.innerHTML=`<span class="pv">${cut?'0%':(p*100).toFixed(0)+'%'}</span><i style="height:${Math.max(3,(cut?0.02:p)*100)}px"></i><b>${esc(showTx(TOKS.tokText(id)||'·')).slice(0,7)}</b>`;
+    bars.appendChild(b);
+  });
+}
+function gnPreview(){
+  if(!GN.ctx||!GN.ctx.length||!GN.uni.size)return;
+  const tau=Math.max(+$('#gnT').value,1e-6), K=+$('#gnK').value;
+  const ent=gnLogits(GN.ctx);
+  const scaled=ent.map(([id,l])=>[id,l/tau]);
+  const sorted=scaled.map(e=>e[1]).sort((a,b)=>b-a);
+  const thr=sorted[Math.min(K,sorted.length)-1];
+  const masked=scaled.map(([id,l])=>[id,l<thr?-Infinity:l]);
+  const probs=softmax(masked.map(e=>e[1]));
+  gnBars(scaled,thr,probs,masked,-1);
+}
+function gnReset(){
+  clearInterval(GN.timer);GN.timer=null;$('#gnPlay').textContent='▶ Genera';
+  GN.out=[];GN.ctx=TOKS.encode($('#gnPrompt').value);
+  $('#gnOut').textContent=$('#gnPrompt').value;
+  $('#gnBars').innerHTML='<span class="faint mono" style="align-self:center">muovi τ / top-k, oppure premi «＋1 token»</span>';
+  gnPreview();
+}
+function initGn(){
+  $('#gnT').addEventListener('input',()=>{$('#gnTo').textContent=(+$('#gnT').value).toFixed(2);gnPreview()});
+  $('#gnK').addEventListener('input',()=>{$('#gnKo').textContent=$('#gnK').value;gnPreview()});
+  $('#gnStep').onclick=()=>gnStep();
+  $('#gnReset').onclick=gnReset;
+  $('#gnPrompt').onchange=gnReset;
+  $('#gnPlay').onclick=()=>{
+    if(GN.timer){clearInterval(GN.timer);GN.timer=null;$('#gnPlay').textContent='▶ Genera';return}
+    $('#gnPlay').textContent='⏸ Pausa';
+    GN.timer=setInterval(()=>{gnStep();if(GN.out.length>=80){clearInterval(GN.timer);GN.timer=null;$('#gnPlay').textContent='▶ Genera'}},REDUCED?40:340);
+  };
+}
+
+function ckRender(){
+  const ex=$('#ckExists').checked,fr=$('#ckForce').checked,df=$('#ckDiff').checked;
+  const loadPath=ex&&!fr;
+  $('#ckQ').classList.add('on');
+  $('#ckEy').classList.toggle('on',loadPath);
+  $('#ckEn').classList.toggle('on',!loadPath);
+  $('#ckLoad').classList.toggle('on',loadPath);
+  $('#ckTrain').classList.toggle('on',!loadPath);
+  $('#ckEg').classList.add('on');
+  $('#ckGen').classList.add('on');
+  const log=$('#ckLog');let s='';
+  if(loadPath){
+    s+=`[checkpoint] Loading model from model.pt\n`;
+    if(df){
+      s+=`<span class="wm">[checkpoint] WARNING: file has n_embd=256 but checkpoint has n_embd=128.\n[checkpoint]          The checkpoint value WINS (the saved shape must match the saved weights).\n[checkpoint]          Set FORCE_RETRAIN=True to retrain with the new hyperparameters.</span>\n`;
+    }
+    s+=`[checkpoint] Restored BPE tokenizer (512 tokens) + config + weights\n`;
+  }else{
+    s+=`[data] input.txt non trovato → FALLBACK_TEXT (Dante ×40)\n[data] BPE training… 256 merges → vocab 512\n[model] Trainable parameters: 866,048\n[train] 2000 step su ${fr&&ex?'(checkpoint ignorato: FORCE_RETRAIN)':'dati nuovi'}\n[checkpoint] Saved to model.pt (weights + tokenizer + config)\n`;
+  }
+  s+=`<span class="ok">[generate] prompt="" → parte da "\\n" · 500 token · T=0.8 · top-k 50</span>`;
+  log.innerHTML=s;
+}
+function initCk(){['#ckExists','#ckForce','#ckDiff'].forEach(x=>$(x).onchange=ckRender);ckRender()}
+
+const GLOSS=[
+["tensor","Tensori","Array n-dimensionale di numeri: lo scalare è 0-D, il vettore 1-D, la matrice 2-D. Tutto ciò che attraversa la rete è un tensore."],
+["shape","Tensori","Le lunghezze delle dimensioni di un tensore: (32, 64, 128) = 32 sequenze × 64 token × 128 canali."],
+["B · batch","Tensori","Numero di sequenze processate in parallelo in uno step. Qui BATCH_SIZE = 32."],
+["T · block_size","Tensori","Lunghezza di contesto: quanti token il modello guarda. Massimo 64; in generation cresce fino a saturare la finestra."],
+["C · n_embd","Tensori","La \u00ablarghezza\u00bb: quanti numeri descrivono ogni token nel residual stream. Qui 128."],
+["V · vocab size","Tensori","Quanti token distinti esistono: 512 = 256 byte + 256 merge."],
+["channel / dim","Tensori","Una delle C componenti del vettore di un token."],
+["broadcasting","Tensori","Regola con cui tensori di shape compatibili si \u00aballargano\u00bb automaticamente in un'operazione: pos_emb (T,C) si somma a tok_emb (B,T,C)."],
+["token","Tokenizer","L'unità di testo che il modello vede: qui un byte o un gruppo di byte fusi dal BPE."],
+["tokenizer","Tokenizer","Il traduttore testo ↔ id. Vive fuori dalla rete, ai bordi input/output."],
+["BPE","Tokenizer","Byte-Pair Encoding: parte dai byte e impara a fondere le coppie adiacenti più frequenti in token più lunghi."],
+["merge","Tokenizer","Una fusione appresa (id_a, id_b) → new_id. L'ordine di apprendimento è la priorità di applicazione in encode."],
+["byte-level","Tokenizer","Vocabolario base = i 256 byte: nessun carattere è mai \u00absconosciuto\u00bb."],
+["encode / decode","Tokenizer","encode: testo → lista di id applicando i merge. decode: id → byte → testo (errors=\"replace\")."],
+["embedding","Architettura","Tabella appresa che mappa un id in un vettore di C numeri. Righe simili per token usati in modo simile."],
+["position embedding","Architettura","Tabella (block_size, C) che codifica il DOVE: senza, l'attention non distingue l'ordine dei token."],
+["residual stream","Architettura","Il tensore (B,T,C) che attraversa tutti i Block; ogni sublayer vi somma il proprio contributo."],
+["residual connection","Architettura","x = x + sublayer(x): il cammino identità che fa fluire segnale e gradiente attraverso la profondità."],
+["LayerNorm","Architettura","Normalizza ogni token a media 0 e varianza 1 sui C canali, poi applica γ e β appresi. Qui in pre-norm."],
+["pre-norm","Architettura","Variante in cui la LayerNorm sta PRIMA del sublayer: x + f(LN(x)). Ramo identità pulito, training stabile."],
+["Block","Architettura","L'unità ripetuta del Transformer: attention (mescola tra posizioni) + MLP (trasforma per posizione), con residual e LayerNorm."],
+["MLP / FeedForward","Architettura","Linear C→4C, ReLU, Linear 4C→C applicate a ogni posizione indipendentemente."],
+["ReLU","Architettura","max(0, x): la non-linearità. Senza, due Linear collassano in una sola mappa lineare."],
+["dropout","Architettura","In training azzera a caso una frazione (0.1) delle attivazioni: regolarizza. Spento in eval."],
+["weight tying","Architettura","lm_head.weight = token_embedding.weight: lo stesso tensore per entrare e uscire dal vocabolario. ~65k parametri risparmiati."],
+["lm_head","Architettura","La Linear finale C → V: da ogni vettore, un punteggio per ogni token del vocabolario."],
+["parameter / weight","Architettura","Numero appreso dal training. GlassGPT ne ha 866 048."],
+["self-attention","Attention","Ogni token costruisce Q, K, V dalla stessa sequenza e aggrega i Value degli altri token pesandoli."],
+["Query / Key / Value","Attention","Q: cosa cerco. K: cosa offro. V: cosa consegno se vengo guardato. Tre proiezioni lineari di x."],
+["attention scores","Attention","Q·Kᵀ/√hs: l'affinità grezza tra ogni coppia di posizioni, shape (T,T)."],
+["attention weights","Attention","Gli score dopo mask e softmax: ogni riga è una distribuzione che somma a 1."],
+["causal mask","Attention","Triangolare inferiore: mette −inf sugli score verso il futuro, che la softmax azzera."],
+["head","Attention","Un'attention indipendente su hs = C/H dimensioni. GlassGPT: 4 head da 32."],
+["multi-head","Attention","H head in parallelo, concatenati e mescolati da una proiezione finale C→C."],
+["softmax","Attention","Trasforma punteggi reali in probabilità positive a somma 1, esponenziando e normalizzando."],
+["logits","Training","Punteggi grezzi pre-softmax, shape (B,T,V): uno per ogni token del vocabolario, a ogni posizione."],
+["cross-entropy","Training","−log p(target): la loss. ln(512) ≈ 6.2383 a pesi casuali."],
+["loss","Training","Il numero unico che misura l'errore; il training lo minimizza."],
+["gradient","Training","d(loss)/d(peso): direzione e intensità con cui muovere ogni parametro. Calcolato da loss.backward()."],
+["backpropagation","Training","L'algoritmo (autograd) che propaga i gradienti all'indietro attraverso il grafo delle operazioni."],
+["AdamW","Training","Ottimizzatore che adatta il passo per-parametro con medie mobili di gradiente e gradiente²."],
+["learning rate","Training","Ampiezza dell'update: 3e-4. Troppo alto diverge, troppo basso non impara."],
+["zero_grad","Training","Azzera i gradienti accumulati: senza, ogni backward sommerebbe ai precedenti."],
+["train/val split","Training","90% per imparare, 10% per misurare su dati mai visti."],
+["overfitting","Training","La rete memorizza il train: train loss scende, val loss risale."],
+["eval / train mode","Training","model.eval() spegne il dropout per misurare; model.train() lo riaccende."],
+["autoregressive","Generation","Genera un token, appendilo al contesto, ripeti: ogni output diventa input."],
+["temperature","Generation","Divide i logit: <1 affila la distribuzione, >1 la appiattisce. Default 0.8."],
+["top-k","Generation","Tiene solo i K logit più alti (qui 50), il resto → −inf: elimina la coda improbabile."],
+["multinomial","Generation","Campiona dalla distribuzione invece di prendere sempre il massimo (argmax)."],
+["no_grad","Generation","Contesto senza autograd: in generation i gradienti non servono, si risparmia memoria e tempo."],
+["checkpoint","Sistema","model.pt: weights + tokenizer (merges, vocab) + config. Self-describing: si ricarica da solo."],
+["state_dict","Sistema","Il dizionario nome→tensore con tutti i pesi (e i buffer) del modello."],
+["register_buffer","Sistema","Tensore che fa parte del modello (device, checkpoint) ma non è allenabile: es. la tril."],
+["seed","Sistema","torch.manual_seed(1337): stessa sequenza pseudo-casuale, run riproducibili."],
+["device","Sistema","Dove vivono i tensori: \"cuda\" (GPU) se disponibile, altrimenti \"cpu\"."],
+["prodotto scalare","Tensori","Somma dei prodotti delle componenti corrispondenti: positivo se due vettori puntano dalla stessa parte, zero se perpendicolari, negativo se opposti. È il test di allineamento su cui è costruita ogni moltiplicazione fra matrici del file."],
+["direzione","Tensori","Una retta nello spazio degli embedding a cui l'addestramento ha dato un significato. Le feature sono immagazzinate lungo direzioni di questo tipo."],
+["neurone","Architettura","Uno dei 4C valori che escono dalla ReLU dentro l'MLP: si dice attivo quando è positivo, inattivo quando è zero."],
+["superposizione","Architettura","Immagazzinare più feature che dimensioni collocandole lungo direzioni quasi (non esattamente) perpendicolari, al prezzo di una lieve interferenza. È il motivo per cui i singoli neuroni non si leggono uno per uno."],
+["attention pattern","Attention","La griglia T × T dei pesi dopo la softmax: la riga i dice come il token i ha distribuito la propria attenzione sui token che lo precedono."],
+["W_O · matrice d'uscita","Attention","La proiezione finale C → C del blocco. Contiene la seconda metà della mappa dei Value di ogni head, quella che risale da hs a C."],
+["cross-attention","Attention","Variante in cui Query e Key vengono da sequenze diverse (traduzione, testo-immagine). Non usata qui: questo file è solo self-attention."],
+["prefill","Inferenza","L'unico forward che elabora tutto il prompt in un colpo solo, riempiendo la KV cache."],
+["decode","Inferenza","I forward successivi, uno per token generato, eseguiti in fila perché ciascuno dipende dal precedente."],
+["TTFT","Inferenza","Time to first token: quanto dura il prefill, cioè l'attesa prima che compaia del testo."],
+["TPOT","Inferenza","Time per output token: la velocità con cui il decode produce testo."],
+["KV cache","Inferenza","I K e V di tutti i token passati, memorizzati per calcolarli una volta sola invece di ricalcolarli a ogni token generato."],
+["GEMM / GEMV","Inferenza","Matrice × matrice / vettore × matrice: le forme a cui si riducono rispettivamente il prefill e il decode."],
+["compute-bound","Inferenza","Il limite sono le unità aritmetiche della GPU. È il caso del prefill, dove aggiungere richieste al batch non porta vantaggi."],
+["memory-bound","Inferenza","Il limite è leggere i pesi dalla memoria. È il caso del decode, dove il batching paga moltissimo: una lettura serve molte richieste."],
+["decodifica speculativa","Inferenza","Un modello draft piccolo propone più token, il modello vero li verifica in un passaggio solo e tiene quelli su cui concorda. Sfrutta il calcolo che il decode lascia inutilizzato e, con la regola di accettazione corretta, non altera la distribuzione di uscita."],
+["draft model","Inferenza","Il modello piccolo e veloce che propone i token nella decodifica speculativa."],
+["tasso di accettazione","Inferenza","La frazione di token proposti che il target conserva: è ciò che determina il guadagno di velocità."],
+["RMSNorm","Varianti moderne","LayerNorm senza sottrazione della media e senza bias: più economico, altrettanto stabile."],
+["RoPE","Varianti moderne","Rotary position embedding: la posizione viene applicata ruotando Q e K dentro l'attention e codifica la distanza relativa. A differenza delle posizioni assolute, sopravvive a una KV cache che scorre."],
+["SwiGLU","Varianti moderne","Attivazione con gate usata nell'MLP al posto della ReLU: loss migliore a parità di parametri."],
+["GQA / MQA","Varianti moderne","Più head che condividono una stessa coppia K/V, per ridurre la KV cache e alzare il numero di richieste servibili insieme."],
+["Flash Attention","Varianti moderne","Attention calcolata senza mai materializzare la matrice T × T in memoria: stessa matematica, molta meno RAM."]
+];
+function initGloss(){
+  const cats=[...new Set(GLOSS.map(g=>g[1]))];
+  const chips=$('#glChips');
+  let activeCat='';
+  const all=document.createElement('button');all.className='chip on';all.textContent='tutte';chips.appendChild(all);
+  const btns=[all];
+  cats.forEach(c=>{const b=document.createElement('button');b.className='chip';b.textContent=c;chips.appendChild(b);btns.push(b)});
+  function render(){
+    const q=$('#glQ').value.trim().toLowerCase();
+    const grid=$('#gl-grid');grid.innerHTML='';
+    GLOSS.filter(([t,c,d])=>(!activeCat||c===activeCat)&&(!q||t.toLowerCase().includes(q)||d.toLowerCase().includes(q)))
+      .forEach(([t,c,d])=>{
+        const el=document.createElement('div');el.className='gl';
+        el.innerHTML=`<span class="cat">${c}</span><b>${esc(t)}</b><p>${esc(d)}</p>`;
+        grid.appendChild(el);
+      });
+    if(!grid.children.length)grid.innerHTML='<p class="faint mono">nessun termine trovato — prova un\'altra parola.</p>';
+  }
+  btns.forEach((b,i)=>b.onclick=()=>{btns.forEach(x=>x.classList.remove('on'));b.classList.add('on');activeCat=i===0?'':b.textContent;render()});
+  $('#glQ').addEventListener('input',render);
+  render();
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  initNav();initPulse();initHighlight();initShape();
+  initBpeA();initBpeB();initGb();initFf();initLn();initPc();initHist();initCe();initTr();initGn();initCk();initGloss();
+  initAt();initMh();initRs();
+  trainRealTokenizer(()=>{
+    encRender();gbRun();initEmb();atData();mhRender(4);$('#mhPhase').textContent='';
+    gnBuild();gnReset();
+  });
+  initReveal();
+});
+
+</script>
+</body>
+</html>

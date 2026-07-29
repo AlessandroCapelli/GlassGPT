@@ -13,7 +13,7 @@ With no `input.txt` present, GlassGPT trains on a small built-in sample (the
 opening of Dante's _Inferno_) so the script runs out of the box, then prints
 generated text.
 
-To train on **your own data**, drop a UTF-8 text file named `input.txt` next to
+To train on **custom data**, drop a UTF-8 text file named `input.txt` next to
 `glassgpt.py` and run again. The trained model, its tokenizer and its config
 are saved to `model.pt`; subsequent runs reload it instead of retraining.
 Set `FORCE_RETRAIN = True` to retrain from scratch.
