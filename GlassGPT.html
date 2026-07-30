@@ -1646,8 +1646,7 @@ passo 3) ripeti: ora "ca" → [257], poi "[257]mm" → [258] ...
 						class="tt">get_batch("train")</span>: 4 partenze casuali, 4 finestre evidenziate, e le matrici x
 					/ y con lo shift di 1. Passa il mouse sulle celle per leggere il testo del token.</p>
 				<div class="ctr"><button class="b warm" id="gbGo">pesca un batch</button>
-					<span class="mono dim">4 partenze casuali → <span id="gbIx"
-							class="num"></span></span>
+					<span class="mono dim">4 partenze casuali → <span id="gbIx" class="num"></span></span>
 				</div>
 				<div class="mlab">Stream di token id (estratto di train_data)</div>
 				<div class="tokline" id="gbStream" style="gap:3px"></div>
@@ -2625,8 +2624,9 @@ token successivo (B,1) -->  appeso in coda al contesto  (B, t+1)
 					Transformer c'è un modello n-gram costruito sui token BPE di Dante (tokenizer a 96 merge), dove i
 					logit sono il logaritmo delle frequenze; <strong>temperature, top-k, softmax e multinomial sono
 						esattamente quelli descritti qui sopra</strong>. Le barre mostrano la distribuzione del prossimo
-					token ad ogni passo: il <span style="color:var(--amber)">vincitore</span> viene appeso, i token <span
-						class="faint">tagliati dal top-k</span> restano spenti.</p>
+					token ad ogni passo: il <span style="color:var(--amber)">vincitore</span> viene appeso, i token
+					<span class="faint">tagliati dal top-k</span> restano spenti.
+				</p>
 				<div class="note" style="margin-top:0"><b>Perché un backoff e non un trigram puro.</b> Il testo di
 					Dante ripetuto ×40 è periodico, e con i token lunghi del BPE due token di contesto individuano quasi
 					sempre un punto unico del testo: su 338 contesti trigram, 330 hanno una sola continuazione. La
@@ -2893,12 +2893,6 @@ risultato: 4 token emessi al costo di circa 1 forward del target</pre>
 				argomento. Nessun filtro: sono tutti qui sotto.</p>
 			<div id="gl-grid"></div>
 		</section>
-
-		<footer>
-			<span>GlassGPT · MIT</span>
-			<span>Pagina didattica: prosa in italiano, termini tecnici in inglese</span>
-			<span>Demo a numeri veri · nessuna libreria esterna</span>
-		</footer>
 	</main>
 	<script>
 		'use strict';
